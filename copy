@@ -1,0 +1,10 @@
+#! /bin/zsh
+echo -n "Running this will \e[31moverwrite\e[0m the code that is currently \
+on BluePebble. Are you sure you want to continue? ([y]/n) "
+read response
+if [[ $response != "y" && $response != "" ]]; then
+    exit 1
+fi
+
+scp -r run train_jacobian_sae.py $(find sae_lens -type f ! -name "*.pyc" ! -name ".DS_Store")\
+    bp:~/jacobian_saes
