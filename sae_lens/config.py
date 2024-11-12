@@ -268,9 +268,9 @@ class LanguageModelSAERunnerConfig:
 
         if self.run_name is None:
             if self.use_jacobian_loss:
-                self.run_name = f"{self.d_sae}-Jac-{self.jacobian_coefficient:2.1e}-LR-{self.lr}-Tokens-{self.training_tokens:3.3e}"
+                self.run_name = f"{self.d_sae}-Jac-{self.jacobian_coefficient:.1e}-LR-{self.lr}-Tokens-{self.training_tokens:.1e}"
             else:    
-                self.run_name = f"{self.d_sae}-L1-{self.l1_coefficient}-LR-{self.lr}-Tokens-{self.training_tokens:3.3e}"
+                self.run_name = f"{self.d_sae}-L1-{self.l1_coefficient}-LR-{self.lr}-Tokens-{self.training_tokens:.1e}"
 
         if self.b_dec_init_method not in ["geometric_median", "mean", "zeros"]:
             raise ValueError(

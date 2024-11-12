@@ -419,9 +419,9 @@ class SAETrainer:
     def _update_pbar(self, step_output: TrainStepOutput, pbar: tqdm, update_interval: int = 100):  # type: ignore
 
         if self.n_training_steps % update_interval == 0:
-            description = f"{self.n_training_steps}| MSE Loss {step_output.mse_loss:.3f} | "
+            description = f"{self.n_training_steps}| MSE Loss {step_output.mse_loss:.1e} | "
             if self.cfg.use_jacobian_loss:
-                description += f"Jacobian Loss {step_output.jacobian_loss:.3f}"
+                description += f"Jacobian Loss {step_output.jacobian_loss:.1e}"
             else:
                 description += f"L1 {step_output.l1_loss:.3f}"
             pbar.set_description(description)
