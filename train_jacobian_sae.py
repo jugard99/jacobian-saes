@@ -1,10 +1,6 @@
 import argparse
 import os
-import sys
-
 import torch
-
-# sys.path.append(os.path.join(os.getcwd(), "SAELens"))
 from sae_lens import LanguageModelSAERunnerConfig, SAETrainingRunner
 
 parser = argparse.ArgumentParser(description="Train a Jacobian SAE")
