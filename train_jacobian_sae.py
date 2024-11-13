@@ -4,7 +4,7 @@ import torch
 from sae_lens import LanguageModelSAERunnerConfig, SAETrainingRunner
 
 parser = argparse.ArgumentParser(description="Train a Jacobian SAE")
-parser.add_argument("--jacobian-coef", "-j", type=float, default=3e3, help="Jacobian coefficient")
+parser.add_argument("--jacobian-coef", "-j", type=float, default=5e2, help="Jacobian coefficient")
 parser.add_argument("--lr", type=float, default=1e-3, help="Learning rate")
 parser.add_argument("--tokens", "-t", type=float, default=300_000_000, help="Total number of training tokens")
 parser.add_argument("--model-size", "-m", type=str, default="70m", help="Pythia model size",
@@ -104,7 +104,7 @@ cfg = LanguageModelSAERunnerConfig(
     dead_feature_threshold=1e-6,  # would effect resampling or ghost grads if we were using it.
     # WANDB
     log_to_wandb=True,
-    wandb_project="jacobian_saes_jac_coef_sweep1",
+    wandb_project="jacobian_saes_test",
     wandb_log_frequency=30,
     eval_every_n_wandb_logs=20,
     # Misc

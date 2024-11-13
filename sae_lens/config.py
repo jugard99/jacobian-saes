@@ -189,7 +189,7 @@ class LanguageModelSAERunnerConfig:
     scale_sparsity_penalty_by_decoder_norm: bool = False
     l1_warm_up_steps: int = 0
     use_jacobian_loss: bool = False
-    jacobian_coefficient: float = 1e-3
+    jacobian_coefficient: float = 5e2
     jacobian_warm_up_steps: int = 0
 
     ## Learning Rate Schedule

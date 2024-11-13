@@ -52,7 +52,7 @@ class TrainingSAEConfig(SAEConfig):
     init_encoder_as_decoder_transpose: bool = False
     scale_sparsity_penalty_by_decoder_norm: bool = False
     use_jacobian_loss: bool = False
-    jacobian_coefficient: float = 1e-3
+    jacobian_coefficient: float = 5e2
 
     @classmethod
     def from_sae_runner_config(
