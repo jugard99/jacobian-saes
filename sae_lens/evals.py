@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Mapping, Union
 import einops
 import pandas as pd
 import torch
+import wandb
 from tqdm import tqdm
 from transformer_lens import HookedTransformer
 from transformer_lens.hook_points import HookedRootModule
@@ -30,6 +31,8 @@ jacobian_sparsity_metrics = [
     "jac_col_l0_mean",
     "jac_col_l0_std",
     "jac_num_empty_cols",
+    "jac_hist",
+    "jac_abs_hist",
 ]
 # Anything with "double" in the name also refers to Jacobian SAEs
 # (it refers to reconstructing both the pre-MLP and the post-MLP activations)
@@ -702,9 +705,7 @@ def get_sparsity_and_variance_metrics(
             metric_dict["l1"].append(l1)
 
             if sae.cfg.use_jacobian_loss:
-                mlp_out, mlp_act_grads = sae.mlp(
-                    sae.pre_mlp_ln(flattened_sae_out)
-                )
+                mlp_out, mlp_act_grads = sae.mlp(sae.pre_mlp_ln(flattened_sae_out))
                 _, _, topk_indices2 = sae.encode_with_hidden_pre_fn(
                     mlp_out, True, return_topk_indices=True
                 )
@@ -732,6 +733,12 @@ def get_sparsity_and_variance_metrics(
                 metric_dict["jac_num_empty_cols"].append(
                     (jac_col_l0 == 0).sum(dim=-1).float()
                 )
+                metric_dict["jac_hist"].append(
+                    jacobian.flatten(start_dim=1).sort(dim=1).values.mean(dim=0)
+                )
+                metric_dict["jac_abs_hist"].append(
+                    jacobian.abs().flatten(start_dim=1).sort(dim=1).values.mean(dim=0)
+                )
 
         if compute_variance_metrics:
             mse, explained_variance, cossim = get_variance_metrics(
@@ -742,17 +749,13 @@ def get_sparsity_and_variance_metrics(
             metric_dict["cossim"].append(cossim)
 
             if sae.cfg.use_jacobian_loss:
-                mse2, explained_variance2, cossim2 = (
-                    get_variance_metrics(
-                        flattened_sae_input_mlp_out,
-                        flattened_sae_out_mlp_out,
-                        flattened_mask,
-                    )
+                mse2, explained_variance2, cossim2 = get_variance_metrics(
+                    flattened_sae_input_mlp_out,
+                    flattened_sae_out_mlp_out,
+                    flattened_mask,
                 )
                 metric_dict["mse2"].append(mse2)
-                metric_dict["explained_variance2"].append(
-                    explained_variance2
-                )
+                metric_dict["explained_variance2"].append(explained_variance2)
                 metric_dict["cossim2"].append(cossim2)
 
         if compute_featurewise_density_statistics:
@@ -764,9 +767,14 @@ def get_sparsity_and_variance_metrics(
             total_tokens += mask.sum()
 
     # Aggregate scalar metrics
-    metrics: dict[str, float] = {}
+    metrics: dict[str, float | wandb.Histogram] = {}
     for metric_name, metric_values in metric_dict.items():
-        metrics[f"{metric_name}"] = torch.cat(metric_values).mean().item()
+        if "hist" in metric_name:
+            metrics[f"{metric_name}"] = wandb.Histogram(
+                torch.stack(metric_values).sort(dim=1).values.mean(dim=0).cpu().numpy()
+            )
+        else:
+            metrics[f"{metric_name}"] = torch.cat(metric_values).mean().item()
 
     # Aggregate feature-wise metrics
     feature_metrics: dict[str, list[float]] = {}

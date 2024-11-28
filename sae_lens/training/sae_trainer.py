@@ -478,7 +478,6 @@ class SAETrainer:
                     .item(),
                 }
             )
-            # TODO add Jacobian sparsity metrics
 
         return log_dict
 
