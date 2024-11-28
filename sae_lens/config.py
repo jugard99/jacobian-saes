@@ -82,6 +82,8 @@ class LanguageModelSAERunnerConfig:
         l1_warm_up_steps (int): The number of warm-up steps for the L1 loss.
         use_jacobian_loss (bool): Whether to use the Jacobian loss.
         jacobian_coefficient (float): The coefficient for the Jacobian loss.
+        jacboian_warm_up_steps (int): The number of warm-up steps for the Jacobian loss scheduler.
+        mlp_out_mse_coefficient (float): The coefficient for the post-MLP reconstruction loss.
         lr (float): The learning rate.
         lr_scheduler_name (str): The name of the learning rate scheduler to use.
         lr_warm_up_steps (int): The number of warm-up steps for the learning rate.
@@ -191,6 +193,7 @@ class LanguageModelSAERunnerConfig:
     use_jacobian_loss: bool = False
     jacobian_coefficient: float = 5e2
     jacobian_warm_up_steps: int = 0
+    mlp_out_mse_coefficient: float = 1.0
 
     ## Learning Rate Schedule
     lr: float = 3e-4
@@ -412,6 +415,8 @@ class LanguageModelSAERunnerConfig:
             "lp_norm": self.lp_norm,
             "use_jacobian_loss": self.use_jacobian_loss,
             "jacobian_coefficient": self.jacobian_coefficient,
+            "jacobian_warm_up_steps": self.jacobian_warm_up_steps,
+            "mlp_out_mse_coefficient": self.mlp_out_mse_coefficient,
             "use_ghost_grads": self.use_ghost_grads,
             "normalize_sae_decoder": self.normalize_sae_decoder,
             "noise_scale": self.noise_scale,

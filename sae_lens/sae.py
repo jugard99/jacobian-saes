@@ -63,6 +63,7 @@ class SAEConfig:
     device: str
     sae_lens_training_version: Optional[str]
     activation_fn_kwargs: dict[str, Any] = field(default_factory=dict)
+    is_pair: bool = False
     neuronpedia_id: Optional[str] = None
     model_from_pretrained_kwargs: dict[str, Any] = field(default_factory=dict)
     seqpos_slice: tuple[int | None, ...] = (None,)
@@ -96,6 +97,7 @@ class SAEConfig:
     def to_dict(self) -> dict[str, Any]:
         return {
             "architecture": self.architecture,
+            "is_pair": self.is_pair,
             "d_in": self.d_in,
             "d_sae": self.d_sae,
             "dtype": self.dtype,
@@ -120,7 +122,7 @@ class SAEConfig:
         }
 
 
-class SAE(HookedRootModule):
+class SAE(HookedRootModule):  # TODO rename to SAEPair
     """
     Core Sparse Autoencoder (SAE) class used for inference. For training, see `TrainingSAE`.
     """
@@ -158,7 +160,9 @@ class SAE(HookedRootModule):
         self.use_error_term = use_error_term
 
         if self.cfg.architecture == "standard":
-            self.initialize_weights_basic()
+            self.initialize_weights_basic(False)
+            if self.cfg.is_pair:
+                self.initialize_weights_basic(True)
             self.encode = self.encode_standard
         elif self.cfg.architecture == "gated":
             self.initialize_weights_gated()
@@ -238,33 +242,91 @@ class SAE(HookedRootModule):
 
         self.setup()  # Required for `HookedRootModule`s
 
-    def initialize_weights_basic(self):
+    @property
+    def W_enc(self):
+        raise ValueError("Use get_W_enc instead")
+
+    @property
+    def b_enc(self):
+        raise ValueError("Use get_b_enc instead")
+
+    @property
+    def W_dec(self):
+        raise ValueError("Use get_W_dec instead")
+
+    @property
+    def b_dec(self):
+        raise ValueError("Use get_b_dec instead")
+
+    def get_W_enc(self, is_output_sae: bool) -> torch.Tensor:
+        return self._W_enc_out if is_output_sae else self._W_enc
+
+    def get_b_enc(self, is_output_sae: bool) -> torch.Tensor:
+        return self._b_enc_out if is_output_sae else self._b_enc
+
+    def get_W_dec(self, is_output_sae: bool) -> torch.Tensor:
+        return self._W_dec_out if is_output_sae else self._W_dec
+
+    def get_b_dec(self, is_output_sae: bool) -> torch.Tensor:
+        return self._b_dec_out if is_output_sae else self._b_dec
+
+    def set_W_enc(self, is_output_sae: bool, value: torch.Tensor):
+        setattr(self, "_W_enc_out" if is_output_sae else "_W_enc", value)
+
+    def set_b_enc(self, is_output_sae: bool, value: torch.Tensor):
+        setattr(self, "_b_enc_out" if is_output_sae else "_b_enc", value)
+
+    def set_W_dec(self, is_output_sae: bool, value: torch.Tensor):
+        setattr(self, "_W_dec_out" if is_output_sae else "_W_dec", value)
+
+    def set_b_dec(self, is_output_sae: bool, value: torch.Tensor):
+        setattr(self, "_b_dec_out" if is_output_sae else "_b_dec", value)
+
+    def initialize_weights_basic(self, is_output_sae: bool):
 
         # no config changes encoder bias init for now.
-        self.b_enc = nn.Parameter(
-            torch.zeros(self.cfg.d_sae, dtype=self.dtype, device=self.device)
+        self.set_b_enc(
+            is_output_sae,
+            nn.Parameter(
+                torch.zeros(self.cfg.d_sae, dtype=self.dtype, device=self.device)
+            ),
         )
 
         # Start with the default init strategy:
-        self.W_dec = nn.Parameter(
-            torch.nn.init.kaiming_uniform_(
-                torch.empty(
-                    self.cfg.d_sae, self.cfg.d_in, dtype=self.dtype, device=self.device
+        self.set_W_dec(
+            is_output_sae,
+            nn.Parameter(
+                torch.nn.init.kaiming_uniform_(
+                    torch.empty(
+                        self.cfg.d_sae,
+                        self.cfg.d_in,
+                        dtype=self.dtype,
+                        device=self.device,
+                    )
                 )
-            )
+            ),
         )
 
-        self.W_enc = nn.Parameter(
-            torch.nn.init.kaiming_uniform_(
-                torch.empty(
-                    self.cfg.d_in, self.cfg.d_sae, dtype=self.dtype, device=self.device
+        self.set_W_enc(
+            is_output_sae,
+            nn.Parameter(
+                torch.nn.init.kaiming_uniform_(
+                    torch.empty(
+                        self.cfg.d_in,
+                        self.cfg.d_sae,
+                        dtype=self.dtype,
+                        device=self.device,
+                    )
                 )
-            )
+            ),
         )
 
         # methdods which change b_dec as a function of the dataset are implemented after init.
-        self.b_dec = nn.Parameter(
-            torch.zeros(self.cfg.d_in, dtype=self.dtype, device=self.device)
+        self.set_b_dec(
+            is_output_sae,
+            nn.Parameter(
+                torch.zeros(self.cfg.d_in, dtype=self.dtype, device=self.device)
+            ),
         )
 
         # scaling factor for fine-tuning (not to be used in initial training)
@@ -275,6 +337,8 @@ class SAE(HookedRootModule):
             )
 
     def initialize_weights_gated(self):
+        raise NotImplementedError("Not implemented with Jacobian SAEs")
+
         # Initialize the weights and biases for the gated encoder
         self.W_enc = nn.Parameter(
             torch.nn.init.kaiming_uniform_(
@@ -309,6 +373,7 @@ class SAE(HookedRootModule):
         )
 
     def initialize_weights_jumprelu(self):
+        raise NotImplementedError("Not implemented with Jacobian SAEs")
         # The params are identical to the standard SAE
         # except we use a threshold parameter too
         self.threshold = nn.Parameter(
@@ -391,12 +456,9 @@ class SAE(HookedRootModule):
         return super().to(*args, **kwargs)
 
     # Basic Forward Pass Functionality.
-    def forward(
-        self,
-        x: torch.Tensor,
-    ) -> torch.Tensor:
-        feature_acts = self.encode(x)
-        sae_out = self.decode(feature_acts)
+    def forward(self, x: torch.Tensor, is_output_sae: bool) -> torch.Tensor:
+        feature_acts = self.encode(x, is_output_sae)
+        sae_out = self.decode(feature_acts, is_output_sae)
 
         # TEMP
         if self.use_error_term:
@@ -406,15 +468,16 @@ class SAE(HookedRootModule):
                 # This is in a no_grad context to detach the error, so we can compute SAE feature gradients (eg for attribution patching). See A.3 in https://arxiv.org/pdf/2403.19647.pdf for more detail
                 # NOTE: we can't just use `sae_error = input - x_reconstruct.detach()` or something simpler, since this would mean intervening on features would mean ablating features still results in perfect reconstruction.
                 with _disable_hooks(self):
-                    feature_acts_clean = self.encode(x)
-                    x_reconstruct_clean = self.decode(feature_acts_clean)
+                    feature_acts_clean = self.encode(x, is_output_sae)
+                    x_reconstruct_clean = self.decode(feature_acts_clean, is_output_sae)
                 sae_error = self.hook_sae_error(x - x_reconstruct_clean)
             sae_out = sae_out + sae_error
         return self.hook_sae_output(sae_out)
 
     def encode_gated(
-        self, x: Float[torch.Tensor, "... d_in"]
+        self, x: Float[torch.Tensor, "... d_in"], is_output_sae: bool
     ) -> Float[torch.Tensor, "... d_sae"]:
+        raise NotImplementedError("Not implemented with Jacobian SAEs")
         sae_in = self.process_sae_in(x)
 
         # Gating path
@@ -432,11 +495,12 @@ class SAE(HookedRootModule):
         return feature_acts
 
     def encode_jumprelu(
-        self, x: Float[torch.Tensor, "... d_in"]
+        self, x: Float[torch.Tensor, "... d_in"], is_output_sae: bool
     ) -> Float[torch.Tensor, "... d_sae"]:
         """
         Calculate SAE features from inputs
         """
+        raise NotImplementedError("Not implemented with Jacobian SAEs")
         sae_in = self.process_sae_in(x)
 
         # "... d_in, d_in d_sae -> ... d_sae",
@@ -449,36 +513,42 @@ class SAE(HookedRootModule):
         return feature_acts
 
     def encode_standard(
-        self, x: Float[torch.Tensor, "... d_in"]
+        self, x: Float[torch.Tensor, "... d_in"], is_output_sae: bool
     ) -> Float[torch.Tensor, "... d_sae"]:
         """
         Calculate SAE features from inputs
         """
-        sae_in = self.process_sae_in(x)
+        sae_in = self.process_sae_in(x, is_output_sae)
 
         # "... d_in, d_in d_sae -> ... d_sae",
-        hidden_pre = self.hook_sae_acts_pre(sae_in @ self.W_enc + self.b_enc)
+        hidden_pre = self.hook_sae_acts_pre(
+            sae_in @ self.get_W_enc(is_output_sae) + self.get_b_enc(is_output_sae)
+        )
         feature_acts = self.hook_sae_acts_post(self.activation_fn(hidden_pre))
 
         return feature_acts
 
     def process_sae_in(
-        self, sae_in: Float[torch.Tensor, "... d_in"]
+        self, sae_in: Float[torch.Tensor, "... d_in"], is_output_sae: bool
     ) -> Float[torch.Tensor, "... d_sae"]:
         sae_in = sae_in.to(self.dtype)
         sae_in = self.reshape_fn_in(sae_in)
         sae_in = self.hook_sae_input(sae_in)
         sae_in = self.run_time_activation_norm_fn_in(sae_in)
-        sae_in = sae_in - (self.b_dec * self.cfg.apply_b_dec_to_input)
+        sae_in = sae_in - (
+            self.get_b_dec(is_output_sae) * self.cfg.apply_b_dec_to_input
+        )
         return sae_in
 
     def decode(
-        self, feature_acts: Float[torch.Tensor, "... d_sae"]
+        self, feature_acts: Float[torch.Tensor, "... d_sae"], is_output_sae: bool
     ) -> Float[torch.Tensor, "... d_in"]:
         """Decodes SAE feature activation tensor into a reconstructed input activation tensor."""
         # "... d_sae, d_sae d_in -> ... d_in",
         sae_out = self.hook_sae_recons(
-            self.apply_finetuning_scaling_factor(feature_acts) @ self.W_dec + self.b_dec
+            self.apply_finetuning_scaling_factor(feature_acts)
+            @ self.get_W_dec(is_output_sae)
+            + self.get_b_dec(is_output_sae)
         )
 
         # handle run time activation normalization if needed
@@ -491,24 +561,35 @@ class SAE(HookedRootModule):
         return sae_out
 
     @torch.no_grad()
-    def fold_W_dec_norm(self):
-        W_dec_norms = self.W_dec.norm(dim=-1).unsqueeze(1)
-        self.W_dec.data = self.W_dec.data / W_dec_norms
-        self.W_enc.data = self.W_enc.data * W_dec_norms.T
+    def fold_W_dec_norm(self, is_output_sae: bool):
+        W_dec_norms = self.get_W_dec(is_output_sae).norm(dim=-1).unsqueeze(1)
+        self.get_W_dec(is_output_sae).data = (
+            self.get_W_dec(is_output_sae).data / W_dec_norms
+        )
+        self.get_W_enc(is_output_sae).data = (
+            self.get_W_enc(is_output_sae).data * W_dec_norms.T
+        )
         if self.cfg.architecture == "gated":
+            raise NotImplementedError("Not implemented with Jacobian SAEs")
             self.r_mag.data = self.r_mag.data * W_dec_norms.squeeze()
             self.b_gate.data = self.b_gate.data * W_dec_norms.squeeze()
             self.b_mag.data = self.b_mag.data * W_dec_norms.squeeze()
         else:
-            self.b_enc.data = self.b_enc.data * W_dec_norms.squeeze()
+            self.get_b_enc(is_output_sae).data = (
+                self.get_b_enc(is_output_sae).data * W_dec_norms.squeeze()
+            )
 
     @torch.no_grad()
     def fold_activation_norm_scaling_factor(
-        self, activation_norm_scaling_factor: float
+        self, activation_norm_scaling_factor: float, is_output_sae: bool
     ):
-        self.W_enc.data = self.W_enc.data * activation_norm_scaling_factor
+        self.get_W_enc(is_output_sae).data = (
+            self.get_W_enc(is_output_sae).data * activation_norm_scaling_factor
+        )
         # previously weren't doing this.
-        self.W_dec.data = self.W_dec.data / activation_norm_scaling_factor
+        self.get_W_dec(is_output_sae).data = (
+            self.get_W_dec(is_output_sae).data / activation_norm_scaling_factor
+        )
 
         # once we normalize, we shouldn't need to scale activations.
         self.cfg.normalize_activations = "none"
@@ -641,7 +722,9 @@ class SAE(HookedRootModule):
         if cfg_dict.get("normalize_activations") == "expected_average_only_in":
             norm_scaling_factor = get_norm_scaling_factor(release, sae_id)
             if norm_scaling_factor is not None:
-                sae.fold_activation_norm_scaling_factor(norm_scaling_factor)
+                sae.fold_activation_norm_scaling_factor(norm_scaling_factor, False)
+                if getattr(sae.cfg, "use_jacobian_loss", False):
+                    sae.fold_activation_norm_scaling_factor(norm_scaling_factor, True)
                 cfg_dict["normalize_activations"] = "none"
             else:
                 warnings.warn(
@@ -694,14 +777,14 @@ class TopK(nn.Module):
         self.postact_fn = postact_fn
 
     @overload
-    def forward(self, x: torch.Tensor, return_indices: Literal[False]) -> torch.Tensor:
-        ...
+    def forward(
+        self, x: torch.Tensor, return_indices: Literal[False]
+    ) -> torch.Tensor: ...
 
     @overload
     def forward(
         self, x: torch.Tensor, return_indices: Literal[True]
-    ) -> tuple[torch.Tensor, torch.Tensor]:
-        ...
+    ) -> tuple[torch.Tensor, torch.Tensor]: ...
 
     def forward(
         self, x: torch.Tensor, return_indices: bool = False

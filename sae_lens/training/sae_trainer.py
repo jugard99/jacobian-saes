@@ -3,17 +3,17 @@ from dataclasses import dataclass
 from typing import Any, cast
 
 import torch
+import wandb
+from torch.optim import Adam
+from tqdm import tqdm
+from transformer_lens.hook_points import HookedRootModule
+
 from sae_lens import __version__
 from sae_lens.config import LanguageModelSAERunnerConfig
 from sae_lens.evals import EvalConfig, run_evals
 from sae_lens.training.activations_store import ActivationsStore
 from sae_lens.training.optim import LinearScheduler, get_lr_scheduler
 from sae_lens.training.training_sae import TrainingSAE, TrainStepOutput
-from torch.optim import Adam
-from tqdm import tqdm
-from transformer_lens.hook_points import HookedRootModule
-
-import wandb
 
 # used to map between parameters which are updated during finetuning and the config str.
 FINETUNING_PARAMETERS = {
@@ -21,12 +21,6 @@ FINETUNING_PARAMETERS = {
     "decoder": ["scaling_factor", "W_dec", "b_dec"],
     "unrotated_decoder": ["scaling_factor", "b_dec"],
 }
-
-
-def _log_feature_sparsity(
-    feature_sparsity: torch.Tensor, eps: float = 1e-10
-) -> torch.Tensor:
-    return torch.log10(feature_sparsity + eps).detach().cpu()
 
 
 def _update_sae_lens_training_version(sae: TrainingSAE) -> None:
@@ -87,6 +81,16 @@ class SAETrainer:
             cast(int, cfg.d_sae),
             device=cfg.device,
         )
+        if self.cfg.use_jacobian_loss:
+            self.act_freq_scores2 = torch.zeros(
+                cast(int, cfg.d_sae),
+                device=cfg.device,
+            )
+            self.n_forward_passes_since_fired2 = torch.zeros(
+                cast(int, cfg.d_sae),
+                device=cfg.device,
+            )
+
         self.n_frac_active_tokens = 0
         # we don't train the scaling factor (initially)
         # set requires grad to false for the scaling factor
@@ -153,8 +157,16 @@ class SAETrainer:
         return self.act_freq_scores / self.n_frac_active_tokens
 
     @property
+    def feature_sparsity2(self) -> torch.Tensor:
+        return self.act_freq_scores2 / self.n_frac_active_tokens
+
+    @property
     def log_feature_sparsity(self) -> torch.Tensor:
-        return _log_feature_sparsity(self.feature_sparsity)
+        return torch.log10(self.feature_sparsity + 1e-10).detach().cpu()
+
+    @property
+    def log_feature_sparsity2(self) -> torch.Tensor:
+        return torch.log10(self.feature_sparsity2 + 1e-10).detach().cpu()
 
     @property
     def current_l1_coefficient(self) -> float:
@@ -167,6 +179,12 @@ class SAETrainer:
     @property
     def dead_neurons(self) -> torch.Tensor:
         return (self.n_forward_passes_since_fired > self.cfg.dead_feature_window).bool()
+
+    @property
+    def dead_neurons2(self) -> torch.Tensor:
+        return (
+            self.n_forward_passes_since_fired2 > self.cfg.dead_feature_window
+        ).bool()
 
     def fit(self) -> TrainingSAE:
 
@@ -196,8 +214,13 @@ class SAETrainer:
         # fold the estimated norm scaling factor into the sae weights
         if self.activation_store.estimated_norm_scaling_factor is not None:
             self.sae.fold_activation_norm_scaling_factor(
-                self.activation_store.estimated_norm_scaling_factor
+                self.activation_store.estimated_norm_scaling_factor, False
             )
+            if self.cfg.use_jacobian_loss:
+                if self.activation_store.estimated_norm_scaling_factor != 1.0:
+                    raise NotImplementedError(
+                        "We're not yet estimating the norm scaling factor for the post-MLP SAE"
+                    )
 
         # save final sae group to checkpoints folder
         self.save_checkpoint(
@@ -215,6 +238,10 @@ class SAETrainer:
             self.activation_store.estimated_norm_scaling_factor = (
                 self.activation_store.estimate_norm_scaling_factor()
             )
+            if self.cfg.use_jacobian_loss:
+                raise NotImplementedError(
+                    "We're not yet estimating the norm scaling factor for the post-MLP SAE"
+                )
         else:
             self.activation_store.estimated_norm_scaling_factor = 1.0
 
@@ -227,7 +254,9 @@ class SAETrainer:
         sae.train()
         # Make sure the W_dec is still zero-norm
         if self.cfg.normalize_sae_decoder:
-            sae.set_decoder_norm_to_unit_norm()
+            sae.set_decoder_norm_to_unit_norm(False)
+            if self.cfg.use_jacobian_loss:
+                sae.set_decoder_norm_to_unit_norm(True)
 
         # log and then reset the feature sparsity every feature_sampling_window steps
         if (self.n_training_steps + 1) % self.cfg.feature_sampling_window == 0:
@@ -243,6 +272,7 @@ class SAETrainer:
             train_step_output = self.sae.training_forward_pass(
                 sae_in=sae_in,
                 dead_neuron_mask=self.dead_neurons,
+                dead_neuron_mask2=self.dead_neurons2,
                 current_l1_coefficient=self.current_l1_coefficient,
                 current_jacobian_coefficient=self.current_jacobian_coefficient,
             )
@@ -254,6 +284,15 @@ class SAETrainer:
                 self.act_freq_scores += (
                     (train_step_output.feature_acts.abs() > 0).float().sum(0)
                 )
+                if self.cfg.use_jacobian_loss:
+                    did_fire2 = (train_step_output.feature_acts2 > 0).float().sum(
+                        -2
+                    ) > 0
+                    self.n_forward_passes_since_fired2 += 1
+                    self.n_forward_passes_since_fired2[did_fire2] = 0
+                    self.act_freq_scores2 += (
+                        (train_step_output.feature_acts2.abs() > 0).float().sum(0)
+                    )
                 self.n_frac_active_tokens += self.cfg.train_batch_size_tokens
 
         # Scaler will rescale gradients if autocast is enabled
@@ -267,7 +306,9 @@ class SAETrainer:
         self.scaler.update()
 
         if self.cfg.normalize_sae_decoder:
-            sae.remove_gradient_parallel_to_decoder_directions()
+            sae.remove_gradient_parallel_to_decoder_directions(False)
+            if self.cfg.use_jacobian_loss:
+                sae.remove_gradient_parallel_to_decoder_directions(True)
 
         self.optimizer.zero_grad()
         self.lr_scheduler.step()
@@ -296,42 +337,66 @@ class SAETrainer:
         sae_in = output.sae_in
         sae_out = output.sae_out
         feature_acts = output.feature_acts
-        mse_loss = output.mse_loss
-        l1_loss = output.l1_loss
-        ghost_grad_loss = output.ghost_grad_loss
-        loss = output.loss.item()
 
         # metrics for currents acts
         l0 = (feature_acts > 0).float().sum(-1).mean()
-        current_learning_rate = self.optimizer.param_groups[0]["lr"]
-
         per_token_l2_loss = (sae_out - sae_in).pow(2).sum(dim=-1).squeeze()
         total_variance = (sae_in - sae_in.mean(0)).pow(2).sum(-1)
         explained_variance = 1 - per_token_l2_loss / total_variance
 
+        if self.cfg.use_jacobian_loss:
+            sae_in2 = output.sae_in2
+            sae_out2 = output.sae_out2
+            feature_acts2 = output.feature_acts2
+            l0_2 = (feature_acts2 > 0).float().sum(-1).mean()
+            per_token_l2_loss2 = (sae_out2 - sae_in2).pow(2).sum(dim=-1).squeeze()
+            total_variance2 = (sae_in2 - sae_in2.mean(0)).pow(2).sum(-1)
+            explained_variance2 = 1 - per_token_l2_loss2 / total_variance2
+        else:
+            l0_2 = torch.tensor(0.0)
+            explained_variance2 = torch.tensor(0.0)
+
         log_dict = {
             # losses
-            "losses/mse_loss": mse_loss,
-            "losses/l1_loss": l1_loss
+            "losses/mse_loss": output.mse_loss,
+            "losses/l1_loss": output.l1_loss
             / (self.current_l1_coefficient if self.current_l1_coefficient != 0 else 1),
             "losses/auxiliary_reconstruction_loss": output.auxiliary_reconstruction_loss,
             "losses/jacobian_loss": output.jacobian_loss
-            / (self.current_jacobian_coefficient if self.current_jacobian_coefficient != 0 else 1),
-            "losses/overall_loss": loss,
+            / (
+                self.current_jacobian_coefficient
+                if self.current_jacobian_coefficient != 0
+                else 1
+            ),
+            "losses/mse_loss2": output.mse_loss2
+            / (
+                self.cfg.mlp_out_mse_coefficient
+                if self.cfg.mlp_out_mse_coefficient != 0
+                else 1
+            ),
+            "losses/l1_loss2": output.l1_loss2
+            / (self.current_l1_coefficient if self.current_l1_coefficient != 0 else 1),
+            "losses/overall_loss": output.loss.item(),
             # variance explained
             "metrics/explained_variance": explained_variance.mean().item(),
             "metrics/explained_variance_std": explained_variance.std().item(),
+            "metrics/explained_variance2": explained_variance2.mean().item(),
+            "metrics/explained_variance_std2": explained_variance2.std().item(),
             "metrics/l0": l0.item(),
+            "metrics/l0_2": l0_2.item(),
             # sparsity
             "sparsity/mean_passes_since_fired": self.n_forward_passes_since_fired.mean().item(),
+            "sparsity/mean_passes_since_fired2": self.n_forward_passes_since_fired2.mean().item(),
             "sparsity/dead_features": self.dead_neurons.sum().item(),
-            "details/current_learning_rate": current_learning_rate,
+            "sparsity/dead_features2": self.dead_neurons2.sum().item(),
+            "details/current_learning_rate": self.optimizer.param_groups[0]["lr"],
             "details/current_l1_coefficient": self.current_l1_coefficient,
             "details/current_jacobian_coefficient": self.current_jacobian_coefficient,
             "details/n_training_tokens": n_training_tokens,
         }
         # Log ghost grad if we're using them
         if self.cfg.use_ghost_grads:
+            ghost_grad_loss = output.ghost_grad_loss
             if isinstance(ghost_grad_loss, torch.Tensor):
                 ghost_grad_loss = ghost_grad_loss.item()
 
@@ -364,13 +429,22 @@ class SAETrainer:
             # Remove metrics that are not useful for wandb logging
             eval_metrics.pop("metrics/total_tokens_evaluated", None)
 
-            W_dec_norm_dist = self.sae.W_dec.detach().float().norm(dim=1).cpu().numpy()
+            W_dec_norm_dist = (
+                self.sae.get_W_dec(False).detach().float().norm(dim=1).cpu().numpy()
+            )
             eval_metrics["weights/W_dec_norms"] = wandb.Histogram(W_dec_norm_dist)  # type: ignore
+            W_dec_out_norm_dist = (
+                self.sae.get_W_dec(True).detach().float().norm(dim=1).cpu().numpy()
+            )
+            eval_metrics["weights/W_dec_norms2"] = wandb.Histogram(W_dec_out_norm_dist)  # type: ignore
 
             if self.sae.cfg.architecture == "standard":
-                b_e_dist = self.sae.b_enc.detach().float().cpu().numpy()
+                b_e_dist = self.sae.get_b_enc(False).detach().float().cpu().numpy()
                 eval_metrics["weights/b_e"] = wandb.Histogram(b_e_dist)  # type: ignore
+                b_e_out_dist = self.sae.get_b_enc(True).detach().float().cpu().numpy()
+                eval_metrics["weights/b_e2"] = wandb.Histogram(b_e_out_dist)  # type: ignore
             elif self.sae.cfg.architecture == "gated":
+                raise NotImplementedError("Not yet implemented for Jacobian SAEs")
                 b_gate_dist = self.sae.b_gate.detach().float().cpu().numpy()
                 eval_metrics["weights/b_gate"] = wandb.Histogram(b_gate_dist)  # type: ignore
                 b_mag_dist = self.sae.b_mag.detach().float().cpu().numpy()
@@ -384,15 +458,29 @@ class SAETrainer:
 
     @torch.no_grad()
     def _build_sparsity_log_dict(self) -> dict[str, Any]:
-
-        log_feature_sparsity = _log_feature_sparsity(self.feature_sparsity)
-        wandb_histogram = wandb.Histogram(log_feature_sparsity.numpy())  # type: ignore
-        return {
-            "metrics/mean_log10_feature_sparsity": log_feature_sparsity.mean().item(),
-            "plots/feature_density_line_chart": wandb_histogram,
+        log_dict = {
+            "metrics/mean_log10_feature_sparsity": self.log_feature_sparsity.mean().item(),
+            "plots/feature_density_line_chart": wandb.Histogram(self.log_feature_sparsity.numpy()),  # type: ignore
             "sparsity/below_1e-5": (self.feature_sparsity < 1e-5).sum().item(),
             "sparsity/below_1e-6": (self.feature_sparsity < 1e-6).sum().item(),
         }
+
+        if self.cfg.use_jacobian_loss:
+            log_dict.update(
+                {
+                    "metrics/mean_log10_feature_sparsity2": self.log_feature_sparsity2.mean().item(),
+                    "plots/feature_density_line_chart2": wandb.Histogram(self.log_feature_sparsity2.numpy()),  # type: ignore
+                    "sparsity/below_1e-5_2": (self.feature_sparsity2 < 1e-5)
+                    .sum()
+                    .item(),
+                    "sparsity/below_1e-6_2": (self.feature_sparsity2 < 1e-6)
+                    .sum()
+                    .item(),
+                }
+            )
+            # TODO add Jacobian sparsity metrics
+
+        return log_dict
 
     @torch.no_grad()
     def _reset_running_sparsity_stats(self) -> None:
@@ -401,6 +489,11 @@ class SAETrainer:
             self.cfg.d_sae,  # type: ignore
             device=self.cfg.device,
         )
+        if self.cfg.use_jacobian_loss:
+            self.act_freq_scores2 = torch.zeros(
+                self.cfg.d_sae,  # type: ignore
+                device=self.cfg.device,
+            )
         self.n_frac_active_tokens = 0
 
     @torch.no_grad()
@@ -419,9 +512,10 @@ class SAETrainer:
     def _update_pbar(self, step_output: TrainStepOutput, pbar: tqdm, update_interval: int = 100):  # type: ignore
 
         if self.n_training_steps % update_interval == 0:
-            description = f"{self.n_training_steps}| MSE Loss {step_output.mse_loss:.1e} | "
+            description = f"{self.n_training_steps}| MSE {step_output.mse_loss:.1e} | "
             if self.cfg.use_jacobian_loss:
-                description += f"Jacobian Loss {step_output.jacobian_loss:.1e}"
+                description += f"MSE_out {step_output.mse_loss2:.1e} | "
+                description += f"Jacobian {step_output.jacobian_loss:.1e}"
             else:
                 description += f"L1 {step_output.l1_loss:.3f}"
             pbar.set_description(description)
@@ -437,6 +531,10 @@ class SAETrainer:
             # if not, then we don't finetune
             if not isinstance(self.cfg.finetuning_method, str):
                 return
+
+            raise NotImplementedError(
+                "Not yet implemented -- update FINETUNING_PARAMETERS"
+            )
 
             for name, param in self.sae.named_parameters():
                 if name in FINETUNING_PARAMETERS[self.cfg.finetuning_method]:

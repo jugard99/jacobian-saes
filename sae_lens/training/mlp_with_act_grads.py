@@ -27,15 +27,20 @@ class MLPWithActGrads(TransformerLensMLP):
             self.cfg.is_layer_norm_activation()
             and self.hook_mid is not None
             and self.ln is not None
+            and not self.cfg.use_normalization_before_and_after
         ):
             raise NotImplementedError(
                 "You passed in something weird and I can't be bothered to support it rn, go check out the TransformerLens MLP code for what's supposed to go here and open a PR if you want this to work"
             )
         else:
-            post_act = self.act_fn(pre_act)  # [batch, pos, d_mlp]
-            grad_of_act = torch.autograd.grad(
-                outputs=post_act, inputs=pre_act, grad_outputs=torch.ones_like(post_act)
-            )[0]
+            with torch.enable_grad():
+                if not pre_act.requires_grad:
+                    pre_act.requires_grad = True
+                post_act = self.act_fn(pre_act)  # [batch, pos, d_mlp]
+                grad_of_act = torch.autograd.grad(
+                    outputs=post_act, inputs=pre_act,
+                    grad_outputs=torch.ones_like(post_act), retain_graph=True
+                )[0]
             post_act = self.hook_post(post_act)
         output = batch_addmm(self.b_out, self.W_out, post_act)
 

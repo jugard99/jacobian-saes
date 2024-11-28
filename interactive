@@ -1,0 +1,2 @@
+#! /bin/sh
+lint -c 1 -g 1 -t 4 -m 22 -a COSC020762 -q gpu --gputype=rtx_3090 --conda-env base -n jacobian

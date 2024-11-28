@@ -88,11 +88,12 @@ class SAETrainingRunner:
                 TrainingSAEConfig.from_dict(
                     self.cfg.get_training_sae_cfg_dict(),
                 ),
-                mlp=(
-                    self.model.blocks[self.cfg.hook_layer].mlp
+                transformer_block=(
+                    self.model.blocks[self.cfg.hook_layer]
                     if self.cfg.use_jacobian_loss
                     else None
                 ),
+                llm_cfg=(self.model.cfg if self.cfg.use_jacobian_loss else None)
             )
             self._init_sae_group_b_decs()
 
@@ -189,10 +190,14 @@ class SAETrainingRunner:
                 layer_acts,
                 maxiter=100,
             ).median
-            self.sae.initialize_b_dec_with_precalculated(median)  # type: ignore
+            self.sae.initialize_b_dec_with_precalculated(median, False)  # type: ignore
+            if self.cfg.use_jacobian_loss:
+                self.sae.initialize_b_dec_with_precalculated(median, True)  # type: ignore
         elif self.cfg.b_dec_init_method == "mean":
             layer_acts = self.activations_store.storage_buffer.detach().cpu()[:, 0, :]
-            self.sae.initialize_b_dec_with_mean(layer_acts)  # type: ignore
+            self.sae.initialize_b_dec_with_mean(layer_acts, False)  # type: ignore
+            if self.cfg.use_jacobian_loss:
+                self.sae.initialize_b_dec_with_mean(layer_acts, True)  # type: ignore
 
     def save_checkpoint(
         self,
@@ -209,7 +214,9 @@ class SAETrainingRunner:
         os.makedirs(path, exist_ok=True)
 
         if self.sae.cfg.normalize_sae_decoder:
-            self.sae.set_decoder_norm_to_unit_norm()
+            self.sae.set_decoder_norm_to_unit_norm(False)
+            if self.cfg.use_jacobian_loss:
+                self.sae.set_decoder_norm_to_unit_norm(True)
         self.sae.save_model(path)
 
         # let's over write the cfg file with the trainer cfg, which is a super set of the original cfg.
@@ -219,6 +226,8 @@ class SAETrainingRunner:
             json.dump(config, f)
 
         log_feature_sparsities = {"sparsity": trainer.log_feature_sparsity}
+        if self.cfg.use_jacobian_loss:
+            log_feature_sparsities["sparsity2"] = trainer.log_feature_sparsity2
 
         log_feature_sparsity_path = f"{path}/{SPARSITY_PATH}"
         save_file(log_feature_sparsities, log_feature_sparsity_path)

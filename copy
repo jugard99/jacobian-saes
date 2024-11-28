@@ -6,5 +6,5 @@ if [[ $response != "y" && $response != "" ]]; then
     exit 1
 fi
 
-scp -r run train_jacobian_sae.py $(find sae_lens -type f ! -name "*.pyc" ! -name ".DS_Store")\
-    bp:~/jacobian_saes
+rsync -av --exclude="*.pyc" --exclude=".DS_Store" \
+    run interactive train_jacobian_sae.py sae_lens bp:~/jacobian_saes

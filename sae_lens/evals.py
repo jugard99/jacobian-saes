@@ -21,6 +21,19 @@ from sae_lens.sae import SAE
 from sae_lens.toolkit.pretrained_saes_directory import get_pretrained_saes_directory
 from sae_lens.training.activations_store import ActivationsStore
 
+jacobian_sparsity_metrics = [
+    "jac_l0",
+    "jac_l1",
+    "jac_row_l0_mean",
+    "jac_row_l0_std",
+    "jac_num_empty_rows",
+    "jac_col_l0_mean",
+    "jac_col_l0_std",
+    "jac_num_empty_cols",
+]
+# Anything with "double" in the name also refers to Jacobian SAEs
+# (it refers to reconstructing both the pre-MLP and the post-MLP activations)
+
 
 def get_library_version() -> str:
     try:
@@ -107,6 +120,10 @@ def run_evals(
     ignore_tokens: set[int | None] = set(),
     verbose: bool = False,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
+    """
+    Main entry point to the file; calls 3 downstream functions to compute
+    the metrics and adds all of them into a dict.
+    """
 
     hook_name = sae.cfg.hook_name
     actual_batch_size = (
@@ -127,6 +144,7 @@ def run_evals(
         "reconstruction_quality": {},
         "shrinkage": {},
         "sparsity": {},
+        "jacobian_sparsity": {},
         "token_stats": {},
     }
 
@@ -154,6 +172,17 @@ def run_evals(
                     "kl_div_with_sae": reconstruction_metrics["kl_div_with_sae"],
                 }
             )
+            if sae.cfg.use_jacobian_loss:
+                all_metrics["model_behavior_preservation"].update(
+                    {
+                        "kl_div_score_double": reconstruction_metrics[
+                            "kl_div_score_double"
+                        ],
+                        "kl_div_with_double_sae": reconstruction_metrics[
+                            "kl_div_with_double_sae"
+                        ],
+                    }
+                )
 
         if eval_config.compute_ce_loss:
             all_metrics["model_performance_preservation"].update(
@@ -168,6 +197,17 @@ def run_evals(
                     ],
                 }
             )
+            if sae.cfg.use_jacobian_loss:
+                all_metrics["model_performance_preservation"].update(
+                    {
+                        "ce_loss_with_double_sae": reconstruction_metrics[
+                            "ce_loss_with_double_sae"
+                        ],
+                        "ce_loss_score_double": reconstruction_metrics[
+                            "ce_loss_score_double"
+                        ],
+                    }
+                )
 
         activation_store.reset_input_dataset()
 
@@ -203,6 +243,17 @@ def run_evals(
                     ],
                 }
             )
+            if sae.cfg.use_jacobian_loss:
+                all_metrics["shrinkage"].update(
+                    {
+                        "l2_norm_in2": sparsity_variance_metrics["l2_norm_in2"],
+                        "l2_norm_out2": sparsity_variance_metrics["l2_norm_out2"],
+                        "l2_ratio2": sparsity_variance_metrics["l2_ratio2"],
+                        "relative_reconstruction_bias2": sparsity_variance_metrics[
+                            "relative_reconstruction_bias2"
+                        ],
+                    }
+                )
 
         if eval_config.compute_sparsity_metrics:
             all_metrics["sparsity"].update(
@@ -211,6 +262,10 @@ def run_evals(
                     "l1": sparsity_variance_metrics["l1"],
                 }
             )
+            if sae.cfg.use_jacobian_loss:
+                all_metrics["jacobian_sparsity"].update(
+                    {m: sparsity_variance_metrics[m] for m in jacobian_sparsity_metrics}
+                )
 
         if eval_config.compute_variance_metrics:
             all_metrics["reconstruction_quality"].update(
@@ -222,11 +277,24 @@ def run_evals(
                     "cossim": sparsity_variance_metrics["cossim"],
                 }
             )
+            if sae.cfg.use_jacobian_loss:
+                all_metrics["reconstruction_quality"].update(
+                    {
+                        "explained_variance2": sparsity_variance_metrics[
+                            "explained_variance2"
+                        ],
+                        "mse2": sparsity_variance_metrics["mse2"],
+                        "cossim2": sparsity_variance_metrics["cossim2"],
+                    }
+                )
+
     else:
         feature_metrics = {}
 
     if eval_config.compute_featurewise_weight_based_metrics:
-        feature_metrics |= get_featurewise_weight_based_metrics(sae)
+        feature_metrics |= get_featurewise_weight_based_metrics(sae, False)
+        if sae.cfg.use_jacobian_loss:
+            feature_metrics |= get_featurewise_weight_based_metrics(sae, True)
 
     if len(all_metrics) == 0:
         raise ValueError(
@@ -266,13 +334,21 @@ def run_evals(
     return all_metrics, feature_metrics
 
 
-def get_featurewise_weight_based_metrics(sae: SAE) -> dict[str, Any]:
+def get_featurewise_weight_based_metrics(
+    sae: SAE, is_output_sae: bool
+) -> dict[str, Any]:
 
-    unit_norm_encoders = (sae.W_enc / sae.W_enc.norm(dim=0, keepdim=True)).cpu()
-    unit_norm_decoder = (sae.W_dec.T / sae.W_dec.T.norm(dim=0, keepdim=True)).cpu()
+    unit_norm_encoders = (
+        sae.get_W_enc(is_output_sae)
+        / sae.get_W_enc(is_output_sae).norm(dim=0, keepdim=True)
+    ).cpu()
+    unit_norm_decoder = (
+        sae.get_W_dec(is_output_sae).T
+        / sae.get_W_dec(is_output_sae).T.norm(dim=0, keepdim=True)
+    ).cpu()
 
-    encoder_norms = sae.W_enc.norm(dim=-2).cpu().tolist()
-    encoder_bias = sae.b_enc.cpu().tolist()
+    encoder_norms = sae.get_W_enc(is_output_sae).norm(dim=-2).cpu().tolist()
+    encoder_bias = sae.get_b_enc(is_output_sae).cpu().tolist()
     encoder_decoder_cosine_sim = (
         torch.nn.functional.cosine_similarity(
             unit_norm_decoder.T,
@@ -283,9 +359,9 @@ def get_featurewise_weight_based_metrics(sae: SAE) -> dict[str, Any]:
     )
 
     return {
-        "encoder_bias": encoder_bias,
-        "encoder_norm": encoder_norms,
-        "encoder_decoder_cosine_sim": encoder_decoder_cosine_sim,
+        f"encoder_bias{"2" if is_output_sae else ""}": encoder_bias,
+        f"encoder_norm{"2" if is_output_sae else ""}": encoder_norms,
+        f"encoder_decoder_cosine_sim{"2" if is_output_sae else ""}": encoder_decoder_cosine_sim,
     }
 
 
@@ -300,14 +376,23 @@ def get_downstream_reconstruction_metrics(
     ignore_tokens: set[int | None] = set(),
     verbose: bool = False,
 ):
+    """
+    Iterates over tokens, calls get_recons_loss on each batch, computes
+    the CE loss score and the KL div score
+    """
+
     metrics_dict = {}
     if compute_kl:
         metrics_dict["kl_div_with_sae"] = []
         metrics_dict["kl_div_with_ablation"] = []
+        if sae.cfg.use_jacobian_loss:
+            metrics_dict["kl_div_with_double_sae"] = []
     if compute_ce_loss:
         metrics_dict["ce_loss_with_sae"] = []
         metrics_dict["ce_loss_without_sae"] = []
         metrics_dict["ce_loss_with_ablation"] = []
+        if sae.cfg.use_jacobian_loss:
+            metrics_dict["ce_loss_with_double_sae"] = []
 
     batch_iter = range(n_batches)
     if verbose:
@@ -348,13 +433,64 @@ def get_downstream_reconstruction_metrics(
         metrics["kl_div_score"] = (
             metrics["kl_div_with_ablation"] - metrics["kl_div_with_sae"]
         ) / metrics["kl_div_with_ablation"]
+        if sae.cfg.use_jacobian_loss:
+            metrics["kl_div_score_double"] = (
+                metrics["kl_div_with_ablation"] - metrics["kl_div_with_double_sae"]
+            ) / metrics["kl_div_with_ablation"]
 
     if compute_ce_loss:
         metrics["ce_loss_score"] = (
             metrics["ce_loss_with_ablation"] - metrics["ce_loss_with_sae"]
         ) / (metrics["ce_loss_with_ablation"] - metrics["ce_loss_without_sae"])
+        if sae.cfg.use_jacobian_loss:
+            metrics["ce_loss_score_double"] = (
+                metrics["ce_loss_with_ablation"] - metrics["ce_loss_with_double_sae"]
+            ) / (metrics["ce_loss_with_ablation"] - metrics["ce_loss_without_sae"])
 
     return metrics
+
+
+def get_variance_metrics(flattened_sae_input, flattened_sae_out, flattened_mask):
+    """
+    Computes the MSE, explained variance, and cosine similarity between the
+    input and output of the SAE.
+    """
+
+    resid_sum_of_squares = (flattened_sae_input - flattened_sae_out).pow(2).sum(dim=-1)
+    total_sum_of_squares = (
+        (flattened_sae_input - flattened_sae_input.mean(dim=0)).pow(2).sum(-1)
+    )
+
+    mse = resid_sum_of_squares / flattened_mask.sum()
+    explained_variance = 1 - resid_sum_of_squares / total_sum_of_squares
+
+    x_normed = flattened_sae_input / torch.norm(
+        flattened_sae_input, dim=-1, keepdim=True
+    )
+    x_hat_normed = flattened_sae_out / torch.norm(
+        flattened_sae_out, dim=-1, keepdim=True
+    )
+    cossim = (x_normed * x_hat_normed).sum(dim=-1)
+
+    return mse, explained_variance, cossim
+
+
+def get_l2_norms(flattened_sae_input, flattened_sae_out):
+    l2_norm_in = torch.norm(flattened_sae_input, dim=-1)
+    l2_norm_out = torch.norm(flattened_sae_out, dim=-1)
+    l2_norm_in_for_div = l2_norm_in.clone()
+    l2_norm_in_for_div[torch.abs(l2_norm_in_for_div) < 0.0001] = 1
+    l2_norm_ratio = l2_norm_out / l2_norm_in_for_div
+
+    # Equation 10 from https://arxiv.org/abs/2404.16014
+    # https://github.com/saprmarks/dictionary_learning/blob/main/evaluation.py
+    x_hat_norm_squared = torch.norm(flattened_sae_out, dim=-1) ** 2
+    x_dot_x_hat = (flattened_sae_input * flattened_sae_out).sum(dim=-1)
+    relative_reconstruction_bias = (
+        x_hat_norm_squared.mean() / x_dot_x_hat.mean()
+    ).unsqueeze(0)
+
+    return l2_norm_in, l2_norm_out, l2_norm_ratio, relative_reconstruction_bias
 
 
 def get_sparsity_and_variance_metrics(
@@ -371,6 +507,11 @@ def get_sparsity_and_variance_metrics(
     ignore_tokens: set[int | None] = set(),
     verbose: bool = False,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
+    """
+    Iterates over the activations, runs the LLM, runs the activations through
+    the SAE, computes metrics (L2 norms of sae ins and outs, L0 and L1 of
+    sae acts, MSE, explained variance, cosine sim, activation density etc)
+    """
 
     hook_name = sae.cfg.hook_name
     hook_head_index = sae.cfg.hook_head_index
@@ -383,13 +524,25 @@ def get_sparsity_and_variance_metrics(
         metric_dict["l2_norm_out"] = []
         metric_dict["l2_ratio"] = []
         metric_dict["relative_reconstruction_bias"] = []
+        if sae.cfg.use_jacobian_loss:
+            metric_dict["l2_norm_in2"] = []
+            metric_dict["l2_norm_out2"] = []
+            metric_dict["l2_ratio2"] = []
+            metric_dict["relative_reconstruction_bias2"] = []
     if compute_sparsity_metrics:
         metric_dict["l0"] = []
         metric_dict["l1"] = []
+        if sae.cfg.use_jacobian_loss:
+            for metric_name in jacobian_sparsity_metrics:
+                metric_dict[metric_name] = []
     if compute_variance_metrics:
         metric_dict["explained_variance"] = []
         metric_dict["mse"] = []
         metric_dict["cossim"] = []
+        if sae.cfg.use_jacobian_loss:
+            metric_dict["explained_variance2"] = []
+            metric_dict["mse2"] = []
+            metric_dict["cossim2"] = []
     if compute_featurewise_density_statistics:
         feature_metric_dict["feature_density"] = []
         feature_metric_dict["consistent_activation_heuristic"] = []
@@ -419,63 +572,106 @@ def get_sparsity_and_variance_metrics(
         flattened_mask = mask.flatten()
 
         # get cache
-        _, cache = model.run_with_cache(
+        has_head_dim_key_substrings = ["hook_q", "hook_k", "hook_v", "hook_z"]
+        cache = {}
+
+        def reconstr_and_cache_hook(activations: torch.Tensor, hook: Any):
+            is_output_sae = "mlp_out" in hook.name
+
+            # we would include hook z, except that we now have base SAE's
+            # which will do their own reshaping for hook z.
+            if hook_head_index is not None:
+                original_act = activations[:, :, hook_head_index]
+            elif any(
+                substring in hook_name for substring in has_head_dim_key_substrings
+            ):
+                original_act = activations.flatten(-2, -1)
+            else:
+                original_act = activations
+
+            # normalise if necessary (necessary in training only, otherwise we should fold the scaling in)
+            if activation_store.normalize_activations == "expected_average_only_in":
+                original_act = activation_store.apply_norm_scaling_factor(original_act)
+
+            # send the (maybe normalised) activations into the SAE
+            if sae.cfg.use_jacobian_loss:
+                sae_feature_activations, topk_indices = sae.encode(
+                    original_act.to(sae.device), is_output_sae, return_topk_indices=True
+                )
+            else:
+                sae_feature_activations = sae.encode(
+                    original_act.to(sae.device), is_output_sae
+                )
+            sae_out = sae.decode(sae_feature_activations, is_output_sae).to(
+                original_act.device
+            )
+
+            if activation_store.normalize_activations == "expected_average_only_in":
+                sae_out = activation_store.unscale(sae_out)
+
+            flattened_sae_input = einops.rearrange(original_act, "b ctx d -> (b ctx) d")
+            flattened_sae_feature_acts = einops.rearrange(
+                sae_feature_activations, "b ctx d -> (b ctx) d"
+            )
+            flattened_sae_out = einops.rearrange(sae_out, "b ctx d -> (b ctx) d")
+            if sae.cfg.use_jacobian_loss:
+                flattened_topk_indices = einops.rearrange(
+                    topk_indices, "b ctx k -> (b ctx) k"
+                )
+
+            # TODO: Clean this up.
+            # apply mask
+            masked_sae_feature_activations = sae_feature_activations * mask.unsqueeze(
+                -1
+            )
+            flattened_sae_input = flattened_sae_input[flattened_mask]
+            flattened_sae_feature_acts = flattened_sae_feature_acts[flattened_mask]
+            flattened_sae_out = flattened_sae_out[flattened_mask]
+            if sae.cfg.use_jacobian_loss:
+                flattened_topk_indices = flattened_topk_indices[flattened_mask]
+
+            cache_dict = {
+                "masked_sae_feature_activations": masked_sae_feature_activations,
+                "flattened_sae_input": flattened_sae_input,
+                "flattened_sae_feature_acts": flattened_sae_feature_acts,
+                "flattened_sae_out": flattened_sae_out,
+            }
+            if sae.cfg.use_jacobian_loss:
+                cache_dict["flattened_topk_indices"] = flattened_topk_indices
+
+            if hook.name == hook_name:
+                cache["hook"] = cache_dict
+            elif "mlp_out" in hook.name:
+                cache["mlp_out"] = cache_dict
+            else:
+                raise ValueError(f"Unexpected hook name: {hook.name}")
+
+            return sae_out
+
+        fwd_hooks = [(hook_name, reconstr_and_cache_hook)]
+        if sae.cfg.use_jacobian_loss:
+            fwd_hooks.append((hook_name[:-9] + "mlp_out", reconstr_and_cache_hook))
+        model.run_with_hooks(
             batch_tokens,
             prepend_bos=False,
-            names_filter=[hook_name],
+            fwd_hooks=fwd_hooks,
             stop_at_layer=sae.cfg.hook_layer + 1,
             **model_kwargs,
         )
 
-        # we would include hook z, except that we now have base SAE's
-        # which will do their own reshaping for hook z.
-        has_head_dim_key_substrings = ["hook_q", "hook_k", "hook_v", "hook_z"]
-        if hook_head_index is not None:
-            original_act = cache[hook_name][:, :, hook_head_index]
-        elif any(substring in hook_name for substring in has_head_dim_key_substrings):
-            original_act = cache[hook_name].flatten(-2, -1)
-        else:
-            original_act = cache[hook_name]
-
-        # normalise if necessary (necessary in training only, otherwise we should fold the scaling in)
-        if activation_store.normalize_activations == "expected_average_only_in":
-            original_act = activation_store.apply_norm_scaling_factor(original_act)
-
-        # send the (maybe normalised) activations into the SAE
-        sae_feature_activations = sae.encode(original_act.to(sae.device))
-        sae_out = sae.decode(sae_feature_activations).to(original_act.device)
-        del cache
-
-        if activation_store.normalize_activations == "expected_average_only_in":
-            sae_out = activation_store.unscale(sae_out)
-
-        flattened_sae_input = einops.rearrange(original_act, "b ctx d -> (b ctx) d")
-        flattened_sae_feature_acts = einops.rearrange(
-            sae_feature_activations, "b ctx d -> (b ctx) d"
-        )
-        flattened_sae_out = einops.rearrange(sae_out, "b ctx d -> (b ctx) d")
-
-        # TODO: Clean this up.
-        # apply mask
-        masked_sae_feature_activations = sae_feature_activations * mask.unsqueeze(-1)
-        flattened_sae_input = flattened_sae_input[flattened_mask]
-        flattened_sae_feature_acts = flattened_sae_feature_acts[flattened_mask]
-        flattened_sae_out = flattened_sae_out[flattened_mask]
+        masked_sae_feature_activations = cache["hook"]["masked_sae_feature_activations"]
+        flattened_sae_input = cache["hook"]["flattened_sae_input"]
+        flattened_sae_feature_acts = cache["hook"]["flattened_sae_feature_acts"]
+        flattened_sae_out = cache["hook"]["flattened_sae_out"]
+        if sae.cfg.use_jacobian_loss:
+            flattened_topk_indices = cache["hook"]["flattened_topk_indices"]
+            flattened_sae_input_mlp_out = cache["mlp_out"]["flattened_sae_input"]
+            flattened_sae_out_mlp_out = cache["mlp_out"]["flattened_sae_out"]
 
         if compute_l2_norms:
-            l2_norm_in = torch.norm(flattened_sae_input, dim=-1)
-            l2_norm_out = torch.norm(flattened_sae_out, dim=-1)
-            l2_norm_in_for_div = l2_norm_in.clone()
-            l2_norm_in_for_div[torch.abs(l2_norm_in_for_div) < 0.0001] = 1
-            l2_norm_ratio = l2_norm_out / l2_norm_in_for_div
-
-            # Equation 10 from https://arxiv.org/abs/2404.16014
-            # https://github.com/saprmarks/dictionary_learning/blob/main/evaluation.py
-            x_hat_norm_squared = torch.norm(flattened_sae_out, dim=-1) ** 2
-            x_dot_x_hat = (flattened_sae_input * flattened_sae_out).sum(dim=-1)
-            relative_reconstruction_bias = (
-                x_hat_norm_squared.mean() / x_dot_x_hat.mean()
-            ).unsqueeze(0)
+            l2_norm_in, l2_norm_out, l2_norm_ratio, relative_reconstruction_bias = (
+                get_l2_norms(flattened_sae_input, flattened_sae_out)
+            )
 
             metric_dict["l2_norm_in"].append(l2_norm_in)
             metric_dict["l2_norm_out"].append(l2_norm_out)
@@ -484,34 +680,80 @@ def get_sparsity_and_variance_metrics(
                 relative_reconstruction_bias
             )
 
+            if sae.cfg.use_jacobian_loss:
+                (
+                    l2_norm_in2,
+                    l2_norm_out2,
+                    l2_norm_ratio2,
+                    relative_reconstruction_bias2,
+                ) = get_l2_norms(flattened_sae_input_mlp_out, flattened_sae_out_mlp_out)
+
+                metric_dict["l2_norm_in2"].append(l2_norm_in2)
+                metric_dict["l2_norm_out2"].append(l2_norm_out2)
+                metric_dict["l2_ratio2"].append(l2_norm_ratio2)
+                metric_dict["relative_reconstruction_bias2"].append(
+                    relative_reconstruction_bias2
+                )
+
         if compute_sparsity_metrics:
             l0 = (flattened_sae_feature_acts > 0).sum(dim=-1).float()
             l1 = flattened_sae_feature_acts.sum(dim=-1)
             metric_dict["l0"].append(l0)
             metric_dict["l1"].append(l1)
 
+            if sae.cfg.use_jacobian_loss:
+                mlp_out, mlp_act_grads = sae.mlp(
+                    sae.pre_mlp_ln(flattened_sae_out)
+                )
+                _, _, topk_indices2 = sae.encode_with_hidden_pre_fn(
+                    mlp_out, True, return_topk_indices=True
+                )
+
+                wd1 = sae.get_W_dec(False) @ sae.mlp.W_in  # (d_sae, d_mlp)
+                w2e = sae.mlp.W_out @ sae.get_W_enc(True)  # (d_mlp, d_sae)
+                jacobian = einops.einsum(
+                    wd1[flattened_topk_indices],
+                    mlp_act_grads,
+                    w2e[:, topk_indices2],
+                    "... seq_pos k1 d_mlp, ... seq_pos d_mlp,"
+                    "d_mlp ... seq_pos k2 -> ... seq_pos k1 k2",
+                )
+                jac_row_l0 = (jacobian > 0).sum(dim=-1).float()
+                jac_col_l0 = (jacobian > 0).sum(dim=-2).float()
+                metric_dict["jac_l0"].append((jacobian > 0).sum(dim=(-1, -2)).float())
+                metric_dict["jac_l1"].append(jacobian.abs().sum(dim=(-1, -2)))
+                metric_dict["jac_row_l0_mean"].append(jac_row_l0.mean(dim=-1))
+                metric_dict["jac_row_l0_std"].append(jac_row_l0.std(dim=-1))
+                metric_dict["jac_num_empty_rows"].append(
+                    (jac_row_l0 == 0).sum(dim=-1).float()
+                )
+                metric_dict["jac_col_l0_mean"].append(jac_col_l0.mean(dim=-1))
+                metric_dict["jac_col_l0_std"].append(jac_col_l0.std(dim=-1))
+                metric_dict["jac_num_empty_cols"].append(
+                    (jac_col_l0 == 0).sum(dim=-1).float()
+                )
+
         if compute_variance_metrics:
-            resid_sum_of_squares = (
-                (flattened_sae_input - flattened_sae_out).pow(2).sum(dim=-1)
+            mse, explained_variance, cossim = get_variance_metrics(
+                flattened_sae_input, flattened_sae_out, flattened_mask
             )
-            total_sum_of_squares = (
-                (flattened_sae_input - flattened_sae_input.mean(dim=0)).pow(2).sum(-1)
-            )
-
-            mse = resid_sum_of_squares / flattened_mask.sum()
-            explained_variance = 1 - resid_sum_of_squares / total_sum_of_squares
-
-            x_normed = flattened_sae_input / torch.norm(
-                flattened_sae_input, dim=-1, keepdim=True
-            )
-            x_hat_normed = flattened_sae_out / torch.norm(
-                flattened_sae_out, dim=-1, keepdim=True
-            )
-            cossim = (x_normed * x_hat_normed).sum(dim=-1)
-
             metric_dict["explained_variance"].append(explained_variance)
             metric_dict["mse"].append(mse)
             metric_dict["cossim"].append(cossim)
+
+            if sae.cfg.use_jacobian_loss:
+                mse2, explained_variance2, cossim2 = (
+                    get_variance_metrics(
+                        flattened_sae_input_mlp_out,
+                        flattened_sae_out_mlp_out,
+                        flattened_mask,
+                    )
+                )
+                metric_dict["mse2"].append(mse2)
+                metric_dict["explained_variance2"].append(
+                    explained_variance2
+                )
+                metric_dict["cossim2"].append(cossim2)
 
         if compute_featurewise_density_statistics:
             sae_feature_activations_bool = (masked_sae_feature_activations > 0).float()
@@ -536,6 +778,12 @@ def get_sparsity_and_variance_metrics(
     return metrics, feature_metrics
 
 
+# TODO for faster performance and less duplication, consider merging
+# get_downstream_reconstruction_metrics, get_sparsity_and_variance_metrics, and
+# get_recons_loss, that way we'd only iterate over the dataset once and do one
+# clean LLM forward pass per batch
+
+
 @torch.no_grad()
 def get_recons_loss(
     sae: SAE,
@@ -546,6 +794,12 @@ def get_recons_loss(
     compute_ce_loss: bool,
     model_kwargs: Mapping[str, Any] = {},
 ) -> dict[str, Any]:
+    """
+    Runs the model with the clean activations, SAE-reconstructed activations,
+    and zero-ablated activations; computes the KL divergence between the logits
+    and the CE loss score.
+    """
+
     hook_name = sae.cfg.hook_name
     head_index = sae.cfg.hook_head_index
 
@@ -557,6 +811,7 @@ def get_recons_loss(
 
     # TODO(tomMcGrath): the rescaling below is a bit of a hack and could probably be tidied up
     def standard_replacement_hook(activations: torch.Tensor, hook: Any):
+        is_output_sae = "mlp_out" in hook.name
 
         original_device = activations.device
         activations = activations.to(sae.device)
@@ -566,7 +821,9 @@ def get_recons_loss(
             activations = activation_store.apply_norm_scaling_factor(activations)
 
         # SAE class agnost forward forward pass.
-        activations = sae.decode(sae.encode(activations)).to(activations.dtype)
+        activations = sae.decode(
+            sae.encode(activations, is_output_sae), is_output_sae
+        ).to(activations.dtype)
 
         # Unscale if activations were scaled prior to going into the SAE
         if activation_store.normalize_activations == "expected_average_only_in":
@@ -575,6 +832,7 @@ def get_recons_loss(
         return activations.to(original_device)
 
     def all_head_replacement_hook(activations: torch.Tensor, hook: Any):
+        is_output_sae = "mlp_out" in hook.name
 
         original_device = activations.device
         activations = activations.to(sae.device)
@@ -584,9 +842,9 @@ def get_recons_loss(
             activations = activation_store.apply_norm_scaling_factor(activations)
 
         # SAE class agnost forward forward pass.
-        new_activations = sae.decode(sae.encode(activations.flatten(-2, -1))).to(
-            activations.dtype
-        )
+        new_activations = sae.decode(
+            sae.encode(activations.flatten(-2, -1), is_output_sae), is_output_sae
+        ).to(activations.dtype)
 
         new_activations = new_activations.reshape(
             activations.shape
@@ -599,6 +857,7 @@ def get_recons_loss(
         return new_activations.to(original_device)
 
     def single_head_replacement_hook(activations: torch.Tensor, hook: Any):
+        is_output_sae = "mlp_out" in hook.name
 
         original_device = activations.device
         activations = activations.to(sae.device)
@@ -607,9 +866,9 @@ def get_recons_loss(
         if activation_store.normalize_activations == "expected_average_only_in":
             activations = activation_store.apply_norm_scaling_factor(activations)
 
-        new_activations = sae.decode(sae.encode(activations[:, :, head_index])).to(
-            activations.dtype
-        )
+        new_activations = sae.decode(
+            sae.encode(activations[:, :, head_index], is_output_sae), is_output_sae
+        ).to(activations.dtype)
         activations[:, :, head_index] = new_activations
 
         # Unscale if activations were scaled prior to going into the SAE
@@ -651,6 +910,18 @@ def get_recons_loss(
         **model_kwargs,
     )
 
+    if sae.cfg.use_jacobian_loss:
+        double_recons_logits, double_recons_ce_loss = model.run_with_hooks(
+            batch_tokens,
+            return_type="both",
+            fwd_hooks=[
+                (hook_name, replacement_hook),
+                (hook_name[:-9] + "mlp_out", replacement_hook),
+            ],
+            loss_per_token=True,
+            **model_kwargs,
+        )
+
     zero_abl_logits, zero_abl_ce_loss = model.run_with_hooks(
         batch_tokens,
         return_type="both",
@@ -671,15 +942,53 @@ def get_recons_loss(
     if compute_kl:
         recons_kl_div = kl(original_logits, recons_logits)
         zero_abl_kl_div = kl(original_logits, zero_abl_logits)
+        double_recons_kl_div = kl(original_logits, double_recons_logits)
         metrics["kl_div_with_sae"] = recons_kl_div
         metrics["kl_div_with_ablation"] = zero_abl_kl_div
+        if sae.cfg.use_jacobian_loss:
+            metrics["kl_div_with_double_sae"] = double_recons_kl_div
 
     if compute_ce_loss:
         metrics["ce_loss_with_sae"] = recons_ce_loss
         metrics["ce_loss_without_sae"] = original_ce_loss
         metrics["ce_loss_with_ablation"] = zero_abl_ce_loss
+        if sae.cfg.use_jacobian_loss:
+            metrics["ce_loss_with_double_sae"] = double_recons_ce_loss
 
     return metrics
+
+
+def flatten_dict(d: dict[str, Any], sep: str = "/") -> dict[str, Any]:
+    """
+    Take a nested dictionary and flatten it to a single level dictionary,
+    with keys separated by the given separator.
+
+    Example:
+    {
+        "a": 1,
+        "b": {
+            "c": 2,
+            "d": 3
+        }
+    }
+
+    becomes
+
+    {
+        "a": 1,
+        "b/c": 2,
+        "b/d": 3
+    }
+    """
+
+    result = {}
+    for key, value in d.items():
+        if isinstance(value, dict):
+            for key2, value2 in value.items():
+                result[key + sep + key2] = value2
+        else:
+            result[key] = value
+    return result
 
 
 def all_loadable_saes() -> list[tuple[str, str, float, float]]:
@@ -724,15 +1033,6 @@ def dict_to_nested(flat_dict: dict[str, Any]) -> defaultdict[Any, Any]:
         d[parts[-1]] = value
     return nested
 
-def flatten_dict(d: dict[str, Any], sep: str = "/") -> dict[str, Any]:
-    result = {}
-    for key, value in d.items():
-        if isinstance(value, dict):
-            for key2, value2 in value.items():
-                result[key + sep + key2] = value2
-        else:
-            result[key] = value
-    return result
 
 def multiple_evals(
     sae_regex_pattern: str,

@@ -1,18 +1,49 @@
 import argparse
+import math
 import os
 import torch
 from sae_lens import LanguageModelSAERunnerConfig, SAETrainingRunner
 
 parser = argparse.ArgumentParser(description="Train a Jacobian SAE")
-parser.add_argument("--jacobian-coef", "-j", type=float, default=5e2, help="Jacobian coefficient")
-parser.add_argument("--lr", type=float, default=1e-3, help="Learning rate")
-parser.add_argument("--tokens", "-t", type=float, default=300_000_000, help="Total number of training tokens")
-parser.add_argument("--model-size", "-m", type=str, default="70m", help="Pythia model size",
-                    choices=["70m", "160m", "410m", "1b", "1.4b", "2.8b", "6.9b", "12b"])
-parser.add_argument("--layer", "-l", type=int, default=3, help="Layer to hook")
-parser.add_argument("-k", type=int, default=32, help="TopK value")
+parser.add_argument(
+    "--always-eval",
+    action="store_true",
+    help="Run evaluations and wandb logging at every training step (only for debugging)",
+)
+parser.add_argument("--batch-size", "-b", type=int, default=2048, help="Batch size")
+parser.add_argument("--context-size", "-c", type=int, default=512, help="Context size")
 parser.add_argument("--expansion-factor", "-e", type=int, default=32, help="Expansion factor")
-parser.add_argument("--no-norm", dest="norm", action="store_false", help="Disable normalization")
+parser.add_argument(
+    "--jacobian-coef", "-j", type=float, default=1, help="Jacobian coefficient"
+)
+parser.add_argument("-k", type=int, default=32, help="TopK value")
+parser.add_argument("--layer", "-l", type=int, default=3, help="Layer to hook")
+parser.add_argument("--lr", type=float, default=5e-4, help="Learning rate")
+parser.add_argument(
+    "--model-size",
+    "-m",
+    type=str,
+    default="70m",
+    help="Pythia model size",
+    choices=["70m", "160m", "410m", "1b", "1.4b", "2.8b", "6.9b", "12b"],
+)
+parser.add_argument( #! Doesn't work right now
+    "--no-norm", dest="norm", action="store_false", help="Disable normalization"
+)
+parser.add_argument(
+    "--out-mse-coef",
+    dest="mlp_out_mse_coefficient",
+    type=float,
+    default=1.0,
+    help="Coefficient for the post-MLP MSE",
+)
+parser.add_argument(
+    "--tokens",
+    "-t",
+    type=float,
+    default=300_000_000,
+    help="Total number of training tokens",
+)
 args = parser.parse_args()
 
 if torch.cuda.is_available():
@@ -27,10 +58,9 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 
 total_training_tokens = int(args.tokens)
-batch_size = 4096
-total_training_steps = (total_training_tokens // batch_size) + 1
-total_training_tokens = total_training_steps * batch_size # to get the exact number
-context_size = 1024
+batch_size = args.batch_size
+total_training_steps = math.ceil(total_training_tokens / batch_size)
+total_training_tokens = total_training_steps * batch_size  # to get the exact number
 
 lr_warm_up_steps = total_training_steps // 100  # 1% of training
 lr_decay_steps = total_training_steps // 5  # 20% of training
@@ -57,7 +87,9 @@ n_layers_by_size = {
     "6.9b": 32,
     "12b": 36,
 }
-assert args.layer < n_layers_by_size[args.model_size], f"Layer {args.layer} does not exist in model size {args.model_size}"
+assert (
+    args.layer < n_layers_by_size[args.model_size]
+), f"Layer {args.layer} does not exist in model size {args.model_size}"
 
 cfg = LanguageModelSAERunnerConfig(
     # Data Generating Function (Model + Training Distibuion)
@@ -69,7 +101,6 @@ cfg = LanguageModelSAERunnerConfig(
     activation_fn="topk",
     activation_fn_kwargs={"k": args.k},
     dataset_path="apollo-research/monology-pile-uncopyrighted-tokenizer-EleutherAI-gpt-neox-20b",
-    is_dataset_tokenized=True,
     streaming=True,
     # SAE Parameters
     expansion_factor=args.expansion_factor,
@@ -79,7 +110,9 @@ cfg = LanguageModelSAERunnerConfig(
     # scale_sparsity_penalty_by_decoder_norm=True,
     # decoder_heuristic_init=True,
     init_encoder_as_decoder_transpose=True,
-    normalize_activations="expected_average_only_in" if args.norm else "none",
+    normalize_activations=(
+        "expected_average_only_in" if (args.norm and False) else 'none'
+    ),  #! Not supported right now
     # Training Parameters
     lr=args.lr,
     adam_beta1=0.9,
@@ -91,8 +124,9 @@ cfg = LanguageModelSAERunnerConfig(
     use_jacobian_loss=True,
     jacobian_coefficient=args.jacobian_coef,
     jacobian_warm_up_steps=jacobian_warm_up_steps,
+    mlp_out_mse_coefficient=args.mlp_out_mse_coefficient,
     train_batch_size_tokens=batch_size,
-    context_size=context_size,
+    context_size=args.context_size,
     # Activation Store Parameters
     n_batches_in_buffer=64,  # controls how many activations we store / shuffle.
     training_tokens=total_training_tokens,  # 100 million tokens is quite a few, but we want to see good stats. Get a coffee, come back.
@@ -105,14 +139,16 @@ cfg = LanguageModelSAERunnerConfig(
     # WANDB
     log_to_wandb=True,
     wandb_project="jacobian_saes_test",
-    wandb_log_frequency=30,
-    eval_every_n_wandb_logs=20,
+    wandb_log_frequency=(1 if args.always_eval else 30),
+    eval_every_n_wandb_logs=(1 if args.always_eval else 20),
     # Misc
     device=device,
     seed=42,
     n_checkpoints=0,
     checkpoint_path="checkpoints",
     dtype="float32",
+    autocast=(device == "cuda"),
+    autocast_lm=(device == "cuda"),
 )
 
 sparse_autoencoder = SAETrainingRunner(cfg).run()
