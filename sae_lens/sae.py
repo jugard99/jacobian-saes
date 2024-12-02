@@ -77,6 +77,7 @@ class SAEConfig:
             "hook_point_head_index": "hook_head_index",
             "hook_point_layer": "hook_layer",
             "activation_fn": "activation_fn_str",
+            "use_jacobian_loss": "is_pair",
         }
         config_dict = {rename_dict.get(k, k): v for k, v in config_dict.items()}
 
@@ -636,6 +637,8 @@ class SAE(HookedRootModule):  # TODO rename to SAEPair
         sae_cfg = SAEConfig.from_dict(cfg_dict)
 
         sae = cls(sae_cfg)
+        if not hasattr(sae, "mlp"):
+            state_dict = {k: v for k, v in state_dict.items() if "mlp" not in k}
         sae.load_state_dict(state_dict)
 
         return sae
