@@ -34,6 +34,9 @@ jacobian_sparsity_metrics = [
     "jac_hist",
     "jac_abs_hist",
 ]
+jacobian_sparsity_thresholds = [0.005, 0.01]
+for thresh in jacobian_sparsity_thresholds:
+    jacobian_sparsity_metrics.append(f"jac_abs_above_{thresh}")
 # Anything with "double" in the name also refers to Jacobian SAEs
 # (it refers to reconstructing both the pre-MLP and the post-MLP activations)
 
@@ -719,10 +722,13 @@ def get_sparsity_and_variance_metrics(
                     "... seq_pos k1 d_mlp, ... seq_pos d_mlp,"
                     "d_mlp ... seq_pos k2 -> ... seq_pos k1 k2",
                 )
-                jac_row_l0 = (jacobian > 0).sum(dim=-1).float()
-                jac_col_l0 = (jacobian > 0).sum(dim=-2).float()
-                metric_dict["jac_l0"].append((jacobian > 0).sum(dim=(-1, -2)).float())
-                metric_dict["jac_l1"].append(jacobian.abs().sum(dim=(-1, -2)))
+                jacobian_abs = jacobian.abs()
+                jac_row_l0 = (jacobian_abs > 0).sum(dim=-1).float()
+                jac_col_l0 = (jacobian_abs > 0).sum(dim=-2).float()
+                metric_dict["jac_l0"].append(
+                    (jacobian_abs > 0).sum(dim=(-1, -2)).float()
+                )
+                metric_dict["jac_l1"].append(jacobian_abs.sum(dim=(-1, -2)))
                 metric_dict["jac_row_l0_mean"].append(jac_row_l0.mean(dim=-1))
                 metric_dict["jac_row_l0_std"].append(jac_row_l0.std(dim=-1))
                 metric_dict["jac_num_empty_rows"].append(
@@ -733,12 +739,17 @@ def get_sparsity_and_variance_metrics(
                 metric_dict["jac_num_empty_cols"].append(
                     (jac_col_l0 == 0).sum(dim=-1).float()
                 )
+                # The averaging here is hacky
                 metric_dict["jac_hist"].append(
                     jacobian.flatten(start_dim=1).sort(dim=1).values.mean(dim=0)
                 )
                 metric_dict["jac_abs_hist"].append(
-                    jacobian.abs().flatten(start_dim=1).sort(dim=1).values.mean(dim=0)
+                    jacobian_abs.flatten(start_dim=1).sort(dim=1).values.mean(dim=0)
                 )
+                for thresh in jacobian_sparsity_thresholds:
+                    metric_dict[f"jac_abs_above_{thresh}"].append(
+                        (jacobian_abs > thresh).sum(dim=(-1, -2)).float()
+                    )
 
         if compute_variance_metrics:
             mse, explained_variance, cossim = get_variance_metrics(
@@ -770,6 +781,7 @@ def get_sparsity_and_variance_metrics(
     metrics: dict[str, float | wandb.Histogram] = {}
     for metric_name, metric_values in metric_dict.items():
         if "hist" in metric_name:
+            # The averaging here is hacky
             metrics[f"{metric_name}"] = wandb.Histogram(
                 torch.stack(metric_values).sort(dim=1).values.mean(dim=0).cpu().numpy()
             )
