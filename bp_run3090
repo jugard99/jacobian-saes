@@ -1,0 +1,6 @@
+#! /bin/zsh
+./copy
+ssh bp << 'EOF'
+    cd jacobian_saes
+    ./run3090
+EOF
