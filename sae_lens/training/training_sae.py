@@ -479,7 +479,6 @@ class TrainingSAE(SAE):  # TODO rename to TrainingSAEPair
             )
 
             # Calculate the Jacobian
-            # TODO make sure the LN doesn't mess this up
             wd1 = self.get_W_dec(False) @ self.mlp.W_in  # (d_sae, d_mlp)
             w2e = self.mlp.W_out @ self.get_W_enc(True)  # (d_mlp, d_sae)
             jacobian = einops.einsum(
