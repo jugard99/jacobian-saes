@@ -253,10 +253,11 @@ class TrainingSAE(SAE):  # TODO rename to TrainingSAEPair
             assert (
                 self.llm_cfg.num_experts is None
             ), "MoE MLPs are not supported with Jacobian SAEs"
-            # assert ( # TODO probably add this check
-            #     self.llm_cfg.normalization_type is None
-            #     or "Pre" in self.llm_cfg.normalization_type
-            # ), "Only Pre normalization is supported"
+            assert (
+                self.llm_cfg.normalization_type is None
+                or "Pre" in self.llm_cfg.normalization_type
+                or "LN" in self.llm_cfg.normalization_type
+            ), "The normalization type you passed in isn't currently supported"
             if self.llm_cfg.parallel_attn_mlp:
                 assert not self.llm_cfg.use_attn_in
                 assert not self.llm_cfg.use_split_qkv_input

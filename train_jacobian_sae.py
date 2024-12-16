@@ -48,8 +48,8 @@ args = parser.parse_args()
 
 if torch.cuda.is_available():
     device = "cuda"
-# elif torch.backends.mps.is_available(): # Doesn't work right now for some reason
-#     device = "mps"
+elif torch.backends.mps.is_available():
+    device = "mps"
 else:
     device = "cpu"
 
@@ -95,7 +95,7 @@ cfg = LanguageModelSAERunnerConfig(
     # Data Generating Function (Model + Training Distibuion)
     # model options here: https://neelnanda-io.github.io/TransformerLens/generated/model_properties_table.html
     model_name=f"pythia-{args.model_size}-deduped",
-    hook_name=f"blocks.{args.layer}.hook_resid_pre",
+    hook_name=f"blocks.{args.layer}.ln2.hook_normalized",
     hook_layer=args.layer,
     d_in=d_sae_by_size[args.model_size],
     activation_fn="topk",

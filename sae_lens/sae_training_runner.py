@@ -70,14 +70,9 @@ class SAETrainingRunner:
 
         # If we're using the Jacobian loss, make sure the hook point makes sense
         if self.cfg.use_jacobian_loss:
-            if self.model.cfg.parallel_attn_mlp:
-                assert (
-                    "resid_pre" in self.cfg.hook_name
-                ), "Jacobian loss only supported for resid_pre for models with parallel attn and MLPs"
-            else:
-                assert (
-                    "resid_mid" in self.cfg.hook_name
-                ), "Jacobian loss only supported for resid_mid for models without parallel attn and MLPs"
+            assert (
+                "ln2.hook_normalized" in self.cfg.hook_name
+            ), "You passed in a hook point that makes no sense with Jacobian loss, use ln2.hook_normalized instead"
 
         if self.cfg.from_pretrained_path is not None:
             self.sae = TrainingSAE.load_from_pretrained(

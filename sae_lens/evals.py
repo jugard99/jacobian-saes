@@ -17,6 +17,7 @@ import wandb
 from tqdm import tqdm
 from transformer_lens import HookedTransformer
 from transformer_lens.hook_points import HookedRootModule
+from transformer_lens.utils import get_act_name
 
 from sae_lens.sae import SAE
 from sae_lens.toolkit.pretrained_saes_directory import get_pretrained_saes_directory
@@ -656,7 +657,9 @@ def get_sparsity_and_variance_metrics(
 
         fwd_hooks = [(hook_name, reconstr_and_cache_hook)]
         if sae.cfg.use_jacobian_loss:
-            fwd_hooks.append((hook_name[:-9] + "mlp_out", reconstr_and_cache_hook))
+            fwd_hooks.append(
+                (get_act_name("mlp_out", sae.cfg.hook_layer), reconstr_and_cache_hook)
+            )
         model.run_with_hooks(
             batch_tokens,
             prepend_bos=False,
@@ -936,7 +939,7 @@ def get_recons_loss(
             return_type="both",
             fwd_hooks=[
                 (hook_name, replacement_hook),
-                (hook_name[:-9] + "mlp_out", replacement_hook),
+                (get_act_name("mlp_out", sae.cfg.hook_layer), replacement_hook),
             ],
             loss_per_token=True,
             **model_kwargs,
