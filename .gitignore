@@ -164,3 +164,5 @@ wandb/
 checkpoints/
 **/.DS_Store
 .vscode
+notebooks/artifacts/
+artifacts/
