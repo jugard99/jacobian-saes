@@ -711,7 +711,7 @@ def get_sparsity_and_variance_metrics(
             metric_dict["l1"].append(l1)
 
             if sae.cfg.use_jacobian_loss:
-                mlp_out, mlp_act_grads = sae.mlp(sae.pre_mlp_ln(flattened_sae_out))
+                mlp_out, mlp_act_grads = sae.mlp(flattened_sae_out)
                 _, _, topk_indices2 = sae.encode_with_hidden_pre_fn(
                     mlp_out, True, return_topk_indices=True
                 )

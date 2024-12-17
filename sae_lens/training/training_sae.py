@@ -262,10 +262,6 @@ class TrainingSAE(SAE):  # TODO rename to TrainingSAEPair
                 assert not self.llm_cfg.use_attn_in
                 assert not self.llm_cfg.use_split_qkv_input
                 assert not self.llm_cfg.use_normalization_before_and_after
-                self.pre_mlp_ln = transformer_block.ln2
-                # TODO do we actually need the transfromer block? isn't it just the LN which we need regardless of parallel_attn_mlp
-                for param in self.pre_mlp_ln.parameters():
-                    param.requires_grad = False
 
     @classmethod
     def from_dict(cls, config_dict: dict[str, Any]) -> "TrainingSAE":
@@ -473,7 +469,7 @@ class TrainingSAE(SAE):  # TODO rename to TrainingSAEPair
             # mlp_out, mlp_act_grads = self.mlp(self.pre_mlp_ln(sae_out))
             #! Bypassing the first SAE for now
             # TODO gradually go from bypassing the first SAE to using it, ie always run both sae_in and sae_out through the MLP and have a scheduler go from 0 to 1 over time
-            mlp_out, mlp_act_grads = self.mlp(self.pre_mlp_ln(sae_in))
+            mlp_out, mlp_act_grads = self.mlp(sae_in)
             sae_out2, feature_acts2, topk_indices2, _mse_loss2, l1_loss2 = (
                 self.apply_sae(mlp_out, True, current_l1_coefficient)
             )
