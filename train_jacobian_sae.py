@@ -10,8 +10,8 @@ parser.add_argument(
     action="store_true",
     help="Run evaluations and wandb logging at every training step (only for debugging)",
 )
-parser.add_argument("--batch-size", "-b", type=int, default=2048, help="Batch size")
-parser.add_argument("--context-size", "-c", type=int, default=512, help="Context size")
+parser.add_argument("--batch-size", "-b", type=int, default=4096, help="Batch size")
+parser.add_argument("--context-size", "-c", type=int, default=1024, help="Context size")
 parser.add_argument("--expansion-factor", "-e", type=int, default=32, help="Expansion factor")
 parser.add_argument(
     "--jacobian-coef", "-j", type=float, default=1, help="Jacobian coefficient"
