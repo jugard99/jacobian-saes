@@ -166,3 +166,4 @@ checkpoints/
 .vscode
 notebooks/artifacts/
 artifacts/
+scratchpad.ipynb

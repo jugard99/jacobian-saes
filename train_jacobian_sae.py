@@ -2,7 +2,7 @@ import argparse
 import math
 import os
 import torch
-from sae_lens import LanguageModelSAERunnerConfig, SAETrainingRunner
+from jacobian_saes import LanguageModelSAERunnerConfig, SAETrainingRunner
 
 parser = argparse.ArgumentParser(description="Train a Jacobian SAE")
 parser.add_argument(

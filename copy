@@ -7,4 +7,4 @@ if [[ $response != "y" && $response != "" ]]; then
 fi
 
 rsync -av --exclude="*.pyc" --exclude=".DS_Store" \
-    run run3090 interactive train_jacobian_sae.py sae_lens bp:~/jacobian_saes
+    run run3090 interactive train_jacobian_sae.py jacobian_saes bp:~/jacobian_saes
