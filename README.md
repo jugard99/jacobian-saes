@@ -3,6 +3,9 @@ The goal of this paper is to create something similar to SAEs but which optimize
 
 This is an ongoing project and is still under development; I'll write a more comprehensive readme once the paper is ready for publication (likely around the ICML deadline).
 
+## Credit
+The code base started off as a fork of the excellent [**SAELens**](https://github.com/jbloomAus/SAELens/tree/main), and a lot of credit goes to them for giving me such a great starting point.
+
 ## How to run it
 The top-level runner is `train_jacobian_sae.py`.
 
@@ -12,6 +15,3 @@ The top-level runner is `train_jacobian_sae.py`.
 - You can use `bp_run` to copy the files and then run them
 
 The last two assume you have a remote called `bp` in your `.ssh/config`, and all of them assume you've cloned [Laurence's infrastructure repo](https://github.com/LaurenceA/infrastructure) onto BluePebble and that it's on your PATH.
-
-## Credit
-The code base started off as a fork of the excellent [SAELens](https://github.com/jbloomAus/SAELens/tree/main), and a lot of credit goes to them for giving me such a great starting point.
