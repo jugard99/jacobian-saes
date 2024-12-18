@@ -1,7 +1,9 @@
 import argparse
 import math
 import os
+
 import torch
+
 from jacobian_saes import LanguageModelSAERunnerConfig, SAETrainingRunner
 
 parser = argparse.ArgumentParser(description="Train a Jacobian SAE")
@@ -12,7 +14,9 @@ parser.add_argument(
 )
 parser.add_argument("--batch-size", "-b", type=int, default=4096, help="Batch size")
 parser.add_argument("--context-size", "-c", type=int, default=1024, help="Context size")
-parser.add_argument("--expansion-factor", "-e", type=int, default=32, help="Expansion factor")
+parser.add_argument(
+    "--expansion-factor", "-e", type=int, default=32, help="Expansion factor"
+)
 parser.add_argument(
     "--jacobian-coef", "-j", type=float, default=1, help="Jacobian coefficient"
 )
@@ -27,7 +31,7 @@ parser.add_argument(
     help="Pythia model size",
     choices=["70m", "160m", "410m", "1b", "1.4b", "2.8b", "6.9b", "12b"],
 )
-parser.add_argument( #! Doesn't work right now
+parser.add_argument(  #! Doesn't work right now
     "--no-norm", dest="norm", action="store_false", help="Disable normalization"
 )
 parser.add_argument(
@@ -43,6 +47,13 @@ parser.add_argument(
     type=float,
     default=300_000_000,
     help="Total number of training tokens",
+)
+parser.add_argument(
+    "--wandb-project",
+    "-w",
+    type=str,
+    default="jacobian_saes_test",
+    help="Wandb project name",
 )
 args = parser.parse_args()
 
@@ -111,7 +122,7 @@ cfg = LanguageModelSAERunnerConfig(
     # decoder_heuristic_init=True,
     init_encoder_as_decoder_transpose=True,
     normalize_activations=(
-        "expected_average_only_in" if (args.norm and False) else 'none'
+        "expected_average_only_in" if (args.norm and False) else "none"
     ),  #! Not supported right now
     # Training Parameters
     lr=args.lr,
@@ -138,7 +149,7 @@ cfg = LanguageModelSAERunnerConfig(
     dead_feature_threshold=1e-6,  # would effect resampling or ghost grads if we were using it.
     # WANDB
     log_to_wandb=True,
-    wandb_project="jacobian_saes_test",
+    wandb_project=args.wandb_project,
     wandb_log_frequency=(1 if args.always_eval else 30),
     eval_every_n_wandb_logs=(1 if args.always_eval else 20),
     # Misc
