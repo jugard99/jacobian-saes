@@ -1,3 +1,4 @@
+import os
 import torch
 from transformer_lens import HookedTransformer
 
@@ -14,12 +15,16 @@ default_prompt = "Given the existence as uttered forth in the public works of Pu
 
 
 def load_pretrained(wandb_artifact_path: str, device: str = default_device):
-    artifact = api.artifact(wandb_artifact_path)
-    artifact.download()
+    local_path = "artifacts/" + wandb_artifact_path.split("/")[-1]
+
+    if not os.path.exists(local_path):
+        artifact = api.artifact(wandb_artifact_path)
+        artifact.download()
     sae = SAEPair.load_from_pretrained(
         "artifacts/" + wandb_artifact_path.split("/")[-1], device=device
     )
     model = HookedTransformer.from_pretrained(sae.cfg.model_name, device=sae.device)
     layer = sae.cfg.hook_layer
+    mlp = model.blocks[layer].mlp
 
-    return sae, model, model.blocks[layer].mlp, layer
+    return sae, model, mlp, layer
