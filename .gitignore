@@ -167,3 +167,5 @@ checkpoints/
 notebooks/artifacts/
 artifacts/
 scratchpad.ipynb
+scratch/*
+latents/*
