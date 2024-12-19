@@ -1,0 +1,4 @@
+#! /bin/sh
+# To be used when over the storage quota on BluePebble
+cd ~/jacobian_saes
+rm -rf artifacts checkpoints wandb ~/.cache/wandb
