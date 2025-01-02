@@ -34,9 +34,6 @@ parser.add_argument(
     help="Pythia model size",
     choices=["70m", "160m", "410m", "1b", "1.4b", "2.8b", "6.9b", "12b"],
 )
-parser.add_argument(  #! Doesn't work right now
-    "--no-norm", dest="norm", action="store_false", help="Disable normalization"
-)
 parser.add_argument(
     "--out-mse-coef",
     dest="mlp_out_mse_coefficient",
@@ -124,9 +121,6 @@ cfg = LanguageModelSAERunnerConfig(
     # scale_sparsity_penalty_by_decoder_norm=True,
     # decoder_heuristic_init=True,
     init_encoder_as_decoder_transpose=True,
-    normalize_activations=(
-        "expected_average_only_in" if (args.norm and False) else "none"
-    ),  #! Not supported right now
     # Training Parameters
     lr=args.lr,
     adam_beta1=0.9,

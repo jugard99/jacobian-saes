@@ -303,6 +303,9 @@ class LanguageModelSAERunnerConfig:
             raise ValueError(
                 f"normalize_activations must be none, expected_average_only_in, or constant_norm_rescale. Got {self.normalize_activations}"
             )
+        
+        if self.normalize_activations != "none":
+            raise ValueError("normalize_activations must be none when training Jacobian SAEs")
 
         if self.act_store_device == "with_model":
             self.act_store_device = self.device
