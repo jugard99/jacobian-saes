@@ -720,7 +720,7 @@ def get_sparsity_and_variance_metrics(
                     mlp_act_grads,
                     w2e[:, topk_indices2],
                     "... seq_pos k1 d_mlp, ... seq_pos d_mlp,"
-                    "d_mlp ... seq_pos k2 -> ... seq_pos k1 k2",
+                    "d_mlp ... seq_pos k2 -> ... seq_pos k2 k1",
                 )
                 jacobian_abs = jacobian.abs()
                 jac_row_l0 = (jacobian_abs > 0).sum(dim=-1).float()

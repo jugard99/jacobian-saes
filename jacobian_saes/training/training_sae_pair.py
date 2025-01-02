@@ -480,7 +480,7 @@ class TrainingSAEPair(SAEPair):
                 mlp_act_grads,
                 w2e[:, topk_indices2],
                 "... seq_pos k1 d_mlp, ... seq_pos d_mlp,"
-                "d_mlp ... seq_pos k2 -> ... seq_pos k1 k2",
+                "d_mlp ... seq_pos k2 -> ... seq_pos k2 k1",
             )
 
             _jacobian_loss = jacobian.abs().mean()
