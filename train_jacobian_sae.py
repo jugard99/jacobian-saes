@@ -77,7 +77,7 @@ lr_warm_up_steps = total_training_steps // 100  # 1% of training
 lr_decay_steps = total_training_steps // 5  # 20% of training
 jacobian_warm_up_steps = total_training_steps // 20  # 5% of training
 
-d_sae_by_size = {
+d_model_by_size = {
     "70m": 512,
     "160m": 768,
     "410m": 1024,
@@ -108,7 +108,7 @@ cfg = LanguageModelSAERunnerConfig(
     model_name=f"pythia-{args.model_size}-deduped",
     hook_name=f"blocks.{args.layer}.ln2.hook_normalized",
     hook_layer=args.layer,
-    d_in=d_sae_by_size[args.model_size],
+    d_in=d_model_by_size[args.model_size],
     activation_fn="topk",
     activation_fn_kwargs={"k": args.k},
     dataset_path="apollo-research/monology-pile-uncopyrighted-tokenizer-EleutherAI-gpt-neox-20b",
