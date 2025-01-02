@@ -180,7 +180,7 @@ experiment_cfg = ExperimentConfig(
 )
 
 client = Offline(
-    f"hugging-quants/Meta-Llama-3.1-70B-Instruct-AWQ-INT4",
+    "hugging-quants/Meta-Llama-3.1-70B-Instruct-AWQ-INT4",
     max_memory=0.8,
     max_model_len=5120,
     num_gpus=1,
