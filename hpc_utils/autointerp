@@ -1,0 +1,4 @@
+#! /bin/sh
+cd ~/work/jacobian_saes
+lbatch -c 1 -g 1 -t 12 -m 22 -a COSC020762 -q mlcnu --conda-env base \
+    -n autointerp --cmd python ./runners/autointerp.py
