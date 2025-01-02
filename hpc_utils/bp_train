@@ -1,0 +1,8 @@
+#! /bin/zsh
+# Run this locally to copy the code over to BP and run it
+SCRIPT_DIR=$(dirname "$0")
+"$SCRIPT_DIR/copy"
+ssh bp << 'EOF'
+    cd ~/work/jacobian_saes
+    ./hpc_utils/train
+EOF
