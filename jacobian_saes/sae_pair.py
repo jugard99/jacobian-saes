@@ -11,7 +11,7 @@ from typing import Any, Callable, Literal, Optional, Tuple, TypeVar, Union, over
 
 import einops
 import torch
-from jaxtyping import Float
+from jaxtyping import Float, Int
 from safetensors.torch import save_file
 from torch import nn
 from transformer_lens.hook_points import HookedRootModule, HookPoint
@@ -511,9 +511,31 @@ class SAEPair(HookedRootModule):
 
         return feature_acts
 
+    @overload
     def encode_standard(
-        self, x: Float[torch.Tensor, "... d_in"], is_output_sae: bool
-    ) -> Float[torch.Tensor, "... d_sae"]:
+        self,
+        x: Float[torch.Tensor, "... d_in"],
+        is_output_sae: bool,
+        return_topk_indices: Literal[False],
+    ) -> Float[torch.Tensor, "... d_sae"]: ...
+
+    @overload
+    def encode_standard(
+        self,
+        x: Float[torch.Tensor, "... d_in"],
+        is_output_sae: bool,
+        return_topk_indices: Literal[True],
+    ) -> tuple[Float[torch.Tensor, "... d_sae"], Int[torch.Tensor, "... k"]]: ...
+
+    def encode_standard(
+        self,
+        x: Float[torch.Tensor, "... d_in"],
+        is_output_sae: bool,
+        return_topk_indices: bool = False,
+    ) -> (
+        Float[torch.Tensor, "... d_sae"]
+        | tuple[Float[torch.Tensor, "... d_sae"], Int[torch.Tensor, "... k"]]
+    ):
         """
         Calculate SAE features from inputs
         """
@@ -523,6 +545,17 @@ class SAEPair(HookedRootModule):
         hidden_pre = self.hook_sae_acts_pre(
             sae_in @ self.get_W_enc(is_output_sae) + self.get_b_enc(is_output_sae)
         )
+        if return_topk_indices:
+            assert (
+                self.cfg.activation_fn_str == "topk"
+            ), "Return indices only makes sense with topk activation function"
+            feature_acts, topk_indices = self.activation_fn(
+                hidden_pre, return_indices=True
+            )
+            feature_acts = self.hook_sae_acts_post(feature_acts)
+
+            return feature_acts, topk_indices
+
         feature_acts = self.hook_sae_acts_post(self.activation_fn(hidden_pre))
 
         return feature_acts
