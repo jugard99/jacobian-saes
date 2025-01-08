@@ -768,7 +768,7 @@ class SAEPair(HookedRootModule):
         return sae, cfg_dict, log_sparsities
 
     def get_name(self):
-        sae_name = f"sae_{self.cfg.model_name}_{self.cfg.hook_name}_{self.cfg.d_sae}"
+        sae_name = f"sae_pair_{self.cfg.model_name}_{self.cfg.hook_layer}_{self.cfg.d_sae}"
         return sae_name
 
     @classmethod

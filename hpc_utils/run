@@ -1,0 +1,11 @@
+#! /bin/sh
+cd ~/work/jacobian_saes
+PYTHON_FILE=$1
+shift
+lbatch -c 1 -g 1 -t 12 -m 22 -a COSC020762 -q cnu --conda-env base\
+    -n jac --cmd python "$PYTHON_FILE" "$@"
+
+# lbatch -c 1 -g 1 -t 12 -m 22 -a COSC020762 -q gpu --gputype=rtx_3090 --conda-env base\
+#     -n jacobian --cmd python ."$PYTHON_FILE" -c 512 "$@"
+
+# --gputype A100 --exclude_40G_A100
