@@ -771,8 +771,11 @@ class TrainingSAEPair(SAEPair):
 
     def get_name(self):
         k = self.cfg.activation_fn_kwargs["k"]
+        jac = self.cfg.jacobian_coefficient
+        if int(jac) == jac:
+            jac = int(jac)
         sae_name = (
             f"sae_pair_{self.cfg.model_name}_layer{self.cfg.hook_layer}_"
-            f"{self.cfg.d_sae}_J{self.cfg.jacobian_coefficient}_k{k}"
+            f"{self.cfg.d_sae}_J{jac}_k{k}"
         )
         return sae_name
