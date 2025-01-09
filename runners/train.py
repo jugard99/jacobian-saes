@@ -16,10 +16,12 @@ parser.add_argument(
     help="Run evaluations and wandb logging at every training step (only for debugging)",
 )
 parser.add_argument("--batch-size", "-b", type=int, default=4096, help="Batch size")
-parser.add_argument("--context-size", "-c", type=int, default=1024, help="Context size")
+parser.add_argument("--buffer-size", type=int, default=64, help="Buffer size (number of batches in buffer)")
+parser.add_argument("--context-size", "-c", type=int, default=2048, help="Context size")
 parser.add_argument(
     "--expansion-factor", "-e", type=int, default=32, help="Expansion factor"
 )
+parser.add_argument("--eval-batch-size", type=int, default=16, help="Eval batch size")
 parser.add_argument(
     "--jacobian-coef", "-j", type=float, default=1, help="Jacobian coefficient"
 )
@@ -41,6 +43,8 @@ parser.add_argument(
     default=1.0,
     help="Coefficient for the post-MLP MSE",
 )
+parser.add_argument("-p", "--precision", type=int, default=32, help="Floating point precision")
+parser.add_argument("--store-batch-size", type=int, default=16, help="Store batch size")
 parser.add_argument(
     "--tokens",
     "-t",
@@ -136,9 +140,10 @@ cfg = LanguageModelSAERunnerConfig(
     train_batch_size_tokens=batch_size,
     context_size=args.context_size,
     # Activation Store Parameters
-    n_batches_in_buffer=64,  # controls how many activations we store / shuffle.
+    n_batches_in_buffer=args.buffer_size,  # controls how many activations we store / shuffle.
     training_tokens=total_training_tokens,  # 100 million tokens is quite a few, but we want to see good stats. Get a coffee, come back.
-    store_batch_size_prompts=16,
+    store_batch_size_prompts=args.store_batch_size,
+    eval_batch_size_prompts=args.eval_batch_size,
     # Resampling protocol
     use_ghost_grads=False,  # we don't use ghost grads anymore.
     feature_sampling_window=1000,  # this controls our reporting of feature sparsity stats
@@ -154,7 +159,7 @@ cfg = LanguageModelSAERunnerConfig(
     seed=42,
     n_checkpoints=0,
     checkpoint_path="checkpoints",
-    dtype="float32",
+    dtype=f"float{args.precision}",
     autocast=(device == "cuda"),
     autocast_lm=(device == "cuda"),
 )

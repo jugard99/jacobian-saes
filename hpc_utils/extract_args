@@ -1,0 +1,45 @@
+#!/usr/bin/env python3
+# Splits up arguments about GPUs and job names from the rest of the arguments
+# (which are passed to the runner script)
+# Example usage:
+# ./hpc_utils/extract_args ./runners/autointerp.py --3090 -n my_name -j 10
+# -> --gputype rtx_3090 -n my_name --cmd python ./runners/autointerp.py -j 10
+
+import argparse
+
+parser = argparse.ArgumentParser(description="CLI wrapper to extract specific flags and pass the rest.")
+
+gpu_group = parser.add_mutually_exclusive_group()
+gpu_group.add_argument('--gputype', type=str, help="Specify GPU type directly")
+gpu_group.add_argument('--3090', dest="_3090", action='store_true', help="Use 3090 GPU")
+gpu_group.add_argument('--a100', action='store_true', help="Use A100 GPU")
+gpu_group.add_argument('--80g', dest="_80g", action='store_true', help="Use the 80gig A100s")
+
+parser.add_argument('runner_script', type=str, help="Path to the runner script")
+parser.add_argument("-n", "--name", default="jsae", type=str, help="Name of the job")
+parser.add_argument("-q", "--queue", default="cnu", type=str, help="Queue for the job")
+
+# Parse known arguments
+args, remaining_args = parser.parse_known_args()
+
+if args.gputype:
+    gpu_flag = f"--gputype {args.gputype}"
+elif args._3090:
+    gpu_flag = "--gputype rtx_3090"
+elif args.a100:
+    gpu_flag = "--gputype A100"
+elif args._80g:
+    gpu_flag = "--gputype A100 --exclude_40G_A100"
+else:
+    gpu_flag = ""
+
+# Prepare the output string
+output_args = [
+    f"{gpu_flag}",
+    f"-n {args.name}",
+    f"-q {args.queue}",
+    f"--cmd python {args.runner_script}",
+] + remaining_args
+
+# Print the resulting command
+print(" ".join(output_args))
