@@ -269,7 +269,11 @@ class LanguageModelSAERunnerConfig:
 
         if self.run_name is None:
             if self.use_jacobian_loss:
-                self.run_name = f"Layer{self.hook_layer}-{self.d_sae}-J{self.jacobian_coefficient}-LR{self.lr:.1e}-Tokens{self.training_tokens:.1e}"
+                jac = self.jacobian_coefficient
+                if int(jac) == jac:
+                    jac = int(jac)
+                k = self.activation_fn_kwargs["k"]
+                self.run_name = f"Layer{self.hook_layer}-{self.d_sae}-J{jac}-LR{self.lr:.1e}-k{k}-T{self.training_tokens:.1e}"
             else:    
                 self.run_name = f"{self.hook_name}-{self.d_sae}-L1-{self.l1_coefficient}-LR-{self.lr}-Tokens-{self.training_tokens:.1e}"
 
