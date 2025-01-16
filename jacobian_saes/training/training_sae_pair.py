@@ -623,6 +623,8 @@ class TrainingSAEPair(SAEPair):
     def load_from_pretrained(
         cls,
         path: str,
+        transformer_block: Optional[TransformerBlock],
+        llm_cfg: HookedTransformerConfig,
         device: str = "cpu",
         dtype: str | None = None,
     ) -> "TrainingSAEPair":
@@ -643,7 +645,7 @@ class TrainingSAEPair(SAEPair):
         )
         sae_cfg = TrainingSAEPairConfig.from_dict(cfg_dict)
 
-        sae = cls(sae_cfg)
+        sae = cls(sae_cfg, transformer_block=transformer_block, llm_cfg=llm_cfg)
         sae.load_state_dict(state_dict)
 
         return sae

@@ -947,11 +947,11 @@ def get_recons_loss(
         **model_kwargs,
     )
 
-    def kl(original_logits: torch.Tensor, new_logits: torch.Tensor):
+    def kl(original_logits: torch.Tensor, new_logits: torch.Tensor, eps: float = 1e-8):
         original_probs = torch.nn.functional.softmax(original_logits, dim=-1)
-        log_original_probs = torch.log(original_probs)
+        log_original_probs = torch.log(original_probs + eps)
         new_probs = torch.nn.functional.softmax(new_logits, dim=-1)
-        log_new_probs = torch.log(new_probs)
+        log_new_probs = torch.log(new_probs + eps)
         kl_div = original_probs * (log_original_probs - log_new_probs)
         kl_div = kl_div.sum(dim=-1)
         return kl_div

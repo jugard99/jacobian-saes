@@ -1,12 +1,15 @@
 import os
+from typing import Optional
 
 import einops
 import torch
 from transformer_lens import HookedTransformer
 from transformer_lens.components.mlps.can_be_used_as_mlp import CanBeUsedAsMLP
+from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
 import wandb
 from jacobian_saes.sae_pair import SAEPair
+from jacobian_saes.training.training_sae_pair import TrainingSAEPair
 from jacobian_saes.training.mlp_with_act_grads import MLPWithActGrads
 
 api = wandb.Api()
@@ -20,17 +23,27 @@ default_prompt = "Given the existence as uttered forth in the public works of Pu
 
 
 def load_pretrained(
-    wandb_artifact_path: str, device: str = default_device
+    wandb_artifact_path: str, device: str = default_device,
+    use_training_class: bool = False,
 ) -> tuple[SAEPair, HookedTransformer, MLPWithActGrads, int]:
     local_path = "artifacts/" + wandb_artifact_path.split("/")[-1]
 
     if not os.path.exists(local_path):
         artifact = api.artifact(wandb_artifact_path)
         artifact.download()
+
+
     sae_pair = SAEPair.load_from_pretrained(
         "artifacts/" + wandb_artifact_path.split("/")[-1], device=device
     )
     model = HookedTransformer.from_pretrained(sae_pair.cfg.model_name, device=sae_pair.device)
+    if use_training_class:
+        sae_pair = TrainingSAEPair.load_from_pretrained(
+            "artifacts/" + wandb_artifact_path.split("/")[-1],
+            transformer_block=model.blocks[sae_pair.cfg.hook_layer],
+            llm_cfg=model.cfg,
+            device=device,
+        )
     layer = sae_pair.cfg.hook_layer
     mlp = model.blocks[layer].mlp
 

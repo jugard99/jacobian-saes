@@ -56,9 +56,9 @@ with torch.no_grad():
                 stop_at_layer=layer + 1,
                 names_filter=[sae_pair.cfg.hook_name],
             )
-            acts = cache[sae_pair.cfg.hook_name][:, 1:]
+            acts = cache[sae_pair.cfg.hook_name][0, 1:]
 
-            for act in acts[0, 1:]:
+            for act in acts:
                 jacobian, acts_dict = run_sandwich(sae_pair, mlp_with_grads, act)
                 sae_acts2 = acts_dict["sae_acts2"]
                 topk_indices1 = acts_dict["topk_indices1"]
