@@ -3,3 +3,4 @@ nnsight==0.3.7
 orjson==3.10.13
 git+https://github.com/EleutherAI/sae
 transformers==4.46.1
+kaleido=0.2.1
