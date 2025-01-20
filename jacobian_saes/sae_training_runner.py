@@ -57,6 +57,7 @@ class SAETrainingRunner:
             self.model = load_model(
                 self.cfg.model_class_name,
                 self.cfg.model_name,
+                self.cfg.randomize_llm_weights,
                 device=self.cfg.device,
                 model_from_pretrained_kwargs=self.cfg.model_from_pretrained_kwargs,
             )

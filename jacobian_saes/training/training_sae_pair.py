@@ -78,6 +78,7 @@ class TrainingSAEPairConfig(SAEPairConfig):
             dtype=cfg.dtype,
             device=cfg.device,
             model_name=cfg.model_name,
+            randomize_llm_weights=cfg.randomize_llm_weights,
             hook_name=cfg.hook_name,
             hook_layer=cfg.hook_layer,
             hook_head_index=cfg.hook_head_index,
@@ -168,6 +169,7 @@ class TrainingSAEPairConfig(SAEPairConfig):
             "apply_b_dec_to_input": self.apply_b_dec_to_input,
             "dtype": self.dtype,
             "model_name": self.model_name,
+            "randomize_llm_weights": self.randomize_llm_weights,
             "hook_name": self.hook_name,
             "hook_layer": self.hook_layer,
             "hook_head_index": self.hook_head_index,
@@ -776,8 +778,11 @@ class TrainingSAEPair(SAEPair):
         jac = self.cfg.jacobian_coefficient
         if int(jac) == jac:
             jac = int(jac)
+        model_name = self.cfg.model_name
+        if self.cfg.randomize_llm_weights:
+            model_name += "-randomized"
         sae_name = (
-            f"sae_pair_{self.cfg.model_name}_layer{self.cfg.hook_layer}_"
+            f"sae_pair_{model_name}_layer{self.cfg.hook_layer}_"
             f"{self.cfg.d_sae}_J{jac}_k{k}"
         )
         return sae_name

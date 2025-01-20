@@ -50,6 +50,7 @@ class SAEPairConfig:
     # dataset it was trained on details.
     context_size: int
     model_name: str
+    randomize_llm_weights: bool
     hook_name: str
     hook_layer: int
     hook_head_index: Optional[int]
@@ -103,6 +104,7 @@ class SAEPairConfig:
             "dtype": self.dtype,
             "device": self.device,
             "model_name": self.model_name,
+            "randomize_llm_weights": self.randomize_llm_weights,
             "hook_name": self.hook_name,
             "hook_layer": self.hook_layer,
             "hook_head_index": self.hook_head_index,
@@ -768,7 +770,10 @@ class SAEPair(HookedRootModule):
         return sae, cfg_dict, log_sparsities
 
     def get_name(self):
-        sae_name = f"sae_pair_{self.cfg.model_name}_{self.cfg.hook_layer}_{self.cfg.d_sae}"
+        model_name = self.cfg.model_name
+        if self.cfg.randomize_llm_weights:
+            model_name += "-randomized"
+        sae_name = f"sae_pair_{model_name}_{self.cfg.hook_layer}_{self.cfg.d_sae}"
         return sae_name
 
     @classmethod

@@ -8,6 +8,7 @@ from transformer_lens.hook_points import HookedRootModule
 def load_model(
     model_class_name: str,
     model_name: str,
+    randomize_llm_weights: bool,
     device: str | torch.device | None = None,
     model_from_pretrained_kwargs: dict[str, Any] | None = None,
 ) -> HookedRootModule:
@@ -23,10 +24,15 @@ def load_model(
             print("-------------")
 
     if model_class_name == "HookedTransformer":
-        return HookedTransformer.from_pretrained_no_processing(
+        model = HookedTransformer.from_pretrained_no_processing(
             model_name=model_name, device=device, **model_from_pretrained_kwargs
         )
+        if randomize_llm_weights:
+            print("\n===RANDOMIZING LLM WEIGHTS===\n")
+            model.init_weights()
+        return model
     elif model_class_name == "HookedMamba":
+        assert not randomize_llm_weights, "Randomizing weights is not supported for mamba models"
         try:
             from mamba_lens import HookedMamba
         except ImportError:  # pragma: no cover

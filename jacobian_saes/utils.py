@@ -37,6 +37,8 @@ def load_pretrained(
         "artifacts/" + wandb_artifact_path.split("/")[-1], device=device
     )
     model = HookedTransformer.from_pretrained(sae_pair.cfg.model_name, device=sae_pair.device)
+    if getattr(sae_pair.cfg, "randomize_llm_weights", False):
+        model.init_weights()
     if use_training_class:
         sae_pair = TrainingSAEPair.load_from_pretrained(
             "artifacts/" + wandb_artifact_path.split("/")[-1],

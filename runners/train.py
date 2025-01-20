@@ -44,6 +44,7 @@ parser.add_argument(
     help="Coefficient for the post-MLP MSE",
 )
 parser.add_argument("-p", "--precision", type=int, default=32, help="Floating point precision")
+parser.add_argument("-r", "--randomize-weights", action="store_true", help="Randomize the weights of the LLM")
 parser.add_argument("--store-batch-size", type=int, default=16, help="Store batch size")
 parser.add_argument(
     "--tokens",
@@ -110,6 +111,7 @@ cfg = LanguageModelSAERunnerConfig(
     # Data Generating Function (Model + Training Distibuion)
     # model options here: https://neelnanda-io.github.io/TransformerLens/generated/model_properties_table.html
     model_name=f"pythia-{args.model_size}-deduped",
+    randomize_llm_weights=args.randomize_weights,
     hook_name=f"blocks.{args.layer}.ln2.hook_normalized",
     hook_layer=args.layer,
     d_in=d_model_by_size[args.model_size],

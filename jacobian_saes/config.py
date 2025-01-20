@@ -30,6 +30,7 @@ class LanguageModelSAERunnerConfig:
 
     Args:
         model_name (str): The name of the model to use. This should be the name of the model in the Hugging Face model hub.
+        randomize_llm_weights (bool): Whether to randomize the weights of the LLM.
         model_class_name (str): The name of the class of the model to use. This should be either `HookedTransformer` or `HookedMamba`.
         hook_name (str): The name of the hook to use. This should be a valid TransformerLens hook.
         hook_eval (str): NOT CURRENTLY IN USE. The name of the hook to use for evaluation.
@@ -116,6 +117,7 @@ class LanguageModelSAERunnerConfig:
 
     # Data Generating Function (Model + Training Distibuion)
     model_name: str = "gelu-2l"
+    randomize_llm_weights: bool = False
     model_class_name: str = "HookedTransformer"
     hook_name: str = "blocks.0.hook_mlp_out"
     hook_eval: str = "NOT_IN_USE"
@@ -273,7 +275,10 @@ class LanguageModelSAERunnerConfig:
                 if int(jac) == jac:
                     jac = int(jac)
                 k = self.activation_fn_kwargs["k"]
-                self.run_name = f"Layer{self.hook_layer}-{self.d_sae}-J{jac}-LR{self.lr:.1e}-k{k}-T{self.training_tokens:.1e}"
+                model_name = self.model_name
+                if self.randomize_llm_weights:
+                    model_name += "-randomized"
+                self.run_name = f"Layer{self.hook_layer}-{self.d_sae}-J{jac}-LR{self.lr:.1e}-k{k}-T{self.training_tokens:.1e}-{model_name}"
             else:    
                 self.run_name = f"{self.hook_name}-{self.d_sae}-L1-{self.l1_coefficient}-LR-{self.lr}-Tokens-{self.training_tokens:.1e}"
 
@@ -396,6 +401,7 @@ class LanguageModelSAERunnerConfig:
             "dtype": self.dtype,
             "device": self.device,
             "model_name": self.model_name,
+            "randomize_llm_weights": self.randomize_llm_weights,
             "hook_name": self.hook_name,
             "hook_layer": self.hook_layer,
             "hook_head_index": self.hook_head_index,
