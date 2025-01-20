@@ -29,17 +29,17 @@ from jacobian_saes.sae_pair import SAEPair
 from jacobian_saes.utils import default_device
 
 # Hyperparams
-small_llama = True
+small_llama = False
 batch_size = 8
 dataset_repo = "EleutherAI/rpj-v2-sample"
 # dataset_repo = "stas/c4-en-10k" #! Remove
-dataset_row = "text"  #! Remove
+# dataset_row = "text"  #! Remove
 dataset_row = "raw_content"
 ctx_len = 256
 example_ctx_len = 32
 n_tokens = 1_000_000
 # n_tokens = 10_000 #! Remove
-shown_examples = 10  #! should this be the same as min/max examples?
+scoring_batch_size = 5
 min_examples = 200
 # min_examples = 20 #! Remove
 max_examples = 10000
@@ -47,7 +47,7 @@ max_examples = 10000
 n_examples_test = 20
 n_quantiles = 10
 number_of_parallel_latents = 10
-n_features = 16_384
+n_features = 512
 n_layers = 6
 split_percentage = "1%"
 
@@ -242,6 +242,7 @@ def run_autointerp_on_cached_acts(eleuther_sae_cfg):
             return record
 
         # Saves the score to a file
+        #! add module (and prob also model and SAE names) to folder path
         def scorer_postprocess(result, score_dir):
             with open(f"results/scores/{score_dir}/{result.record.feature}.txt", "wb") as f:
                 f.write(orjson.dumps(result.score))
@@ -254,7 +255,7 @@ def run_autointerp_on_cached_acts(eleuther_sae_cfg):
                 DetectionScorer(
                     client,
                     tokenizer=dataset.tokenizer,
-                    batch_size=shown_examples,
+                    batch_size=scoring_batch_size,
                     verbose=False,
                     log_prob=True,
                 ),
@@ -265,7 +266,7 @@ def run_autointerp_on_cached_acts(eleuther_sae_cfg):
                 FuzzingScorer(
                     client,
                     tokenizer=dataset.tokenizer,
-                    batch_size=shown_examples,
+                    batch_size=scoring_batch_size,
                     verbose=False,
                     log_prob=True,
                 ),
