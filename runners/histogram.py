@@ -77,7 +77,7 @@ with torch.no_grad():
 
             jacobian, acts_dict = run_sandwich(sae_pair, mlp_with_grads, acts)
 
-            hist += torch.histc(jacobian.flatten(), bins=bins, min=min_val, max=max_val)
+            hist += torch.histc(jacobian.abs().flatten(), bins=bins, min=min_val, max=max_val)
 
             topk1 = acts_dict["topk_indices1"].unsqueeze(-1)
             topk2 = acts_dict["topk_indices2"].unsqueeze(-2)
