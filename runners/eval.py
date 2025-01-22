@@ -92,13 +92,13 @@ with torch.no_grad():
                     (recons_dict["ce_loss_with_sae"] +
                      recons_dict["ce_loss_with_sae2"]) / 2)
             ) / (recons_dict["ce_loss_with_ablation"] -
-                 recons_dict["ce_loss_without_sae"])).flatten())
+                 recons_dict["ce_loss_without_sae"] + 1e-6)).flatten())
             
             kl_scores.append(((
                 recons_dict["kl_div_with_ablation"] - (
                     (recons_dict["kl_div_with_sae"] +
                      recons_dict["kl_div_with_sae2"]) / 2)
-            ) / recons_dict["kl_div_with_ablation"]).flatten())
+            ) / (recons_dict["kl_div_with_ablation"] + 1e-6)).flatten())
 
             pbar.update(acts.shape[1])
             if pbar.n >= n_tokens:
@@ -118,7 +118,7 @@ output_dir = os.path.join(script_dir, args.output_dir)
 
 if not os.path.exists(output_dir):
     os.makedirs(output_dir)
-output_path = os.path.join(output_dir, f"{args.path.split("/")[-1]}.safetensor")
+output_path = os.path.join(output_dir, f"{args.path.split("/")[-1]}.json")
 
 with open(output_path, 'w') as f:
     json.dump(output_dict, f)
