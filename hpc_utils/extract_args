@@ -11,6 +11,7 @@ parser = argparse.ArgumentParser(description="CLI wrapper to extract specific fl
 
 gpu_group = parser.add_mutually_exclusive_group()
 gpu_group.add_argument('--gputype', type=str, help="Specify GPU type directly")
+gpu_group.add_argument('--2080', dest="_2080", action='store_true', help="Use 2080 GPU")
 gpu_group.add_argument('--3090', dest="_3090", action='store_true', help="Use 3090 GPU")
 gpu_group.add_argument('--a100', action='store_true', help="Use A100 GPU")
 gpu_group.add_argument('--80g', dest="_80g", action='store_true', help="Use the 80gig A100s")
@@ -24,6 +25,8 @@ args, remaining_args = parser.parse_known_args()
 
 if args.gputype:
     gpu_flag = f"--gputype {args.gputype}"
+elif args._2080:
+    gpu_flag = "--gputype rtx_2080"
 elif args._3090:
     gpu_flag = "--gputype rtx_3090"
 elif args.a100:
