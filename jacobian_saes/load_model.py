@@ -8,7 +8,7 @@ from transformer_lens.hook_points import HookedRootModule
 def load_model(
     model_class_name: str,
     model_name: str,
-    randomize_llm_weights: bool,
+    randomize_llm_weights: bool = False,
     device: str | torch.device | None = None,
     model_from_pretrained_kwargs: dict[str, Any] | None = None,
 ) -> HookedRootModule:

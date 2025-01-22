@@ -2,6 +2,7 @@ import os
 from typing import Optional
 
 import einops
+from safetensors.torch import load_file
 import torch
 from transformer_lens import HookedTransformer
 from transformer_lens.components.mlps.can_be_used_as_mlp import CanBeUsedAsMLP
@@ -11,6 +12,7 @@ import wandb
 from jacobian_saes.sae_pair import SAEPair
 from jacobian_saes.training.training_sae_pair import TrainingSAEPair
 from jacobian_saes.training.mlp_with_act_grads import MLPWithActGrads
+from jacobian_saes.sae_training_runner import RANDOMIZED_LLM_WEIGHTS_PATH
 
 api = wandb.Api()
 default_device = (
@@ -26,19 +28,23 @@ def load_pretrained(
     wandb_artifact_path: str, device: str = default_device,
     use_training_class: bool = False,
 ) -> tuple[SAEPair, HookedTransformer, MLPWithActGrads, int]:
-    local_path = "artifacts/" + wandb_artifact_path.split("/")[-1]
+    local_path = os.path.join("artifacts/", wandb_artifact_path.split("/")[-1])
 
     if not os.path.exists(local_path):
         artifact = api.artifact(wandb_artifact_path)
         artifact.download()
 
 
-    sae_pair = SAEPair.load_from_pretrained(
-        "artifacts/" + wandb_artifact_path.split("/")[-1], device=device
-    )
-    model = HookedTransformer.from_pretrained(sae_pair.cfg.model_name, device=sae_pair.device)
+    sae_pair = SAEPair.load_from_pretrained(local_path, device=device)
     if getattr(sae_pair.cfg, "randomize_llm_weights", False):
-        model.init_weights()
+        model = HookedTransformer.from_pretrained_no_processing(sae_pair.cfg.model_name,
+                                                                device=sae_pair.device)
+        llm_weights_path = os.path.join(local_path, RANDOMIZED_LLM_WEIGHTS_PATH)
+        model.load_state_dict(load_file(llm_weights_path))
+    else:
+        model = HookedTransformer.from_pretrained(sae_pair.cfg.model_name,
+                                                  device=sae_pair.device)
+
     if use_training_class:
         sae_pair = TrainingSAEPair.load_from_pretrained(
             "artifacts/" + wandb_artifact_path.split("/")[-1],

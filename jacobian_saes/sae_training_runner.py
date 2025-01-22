@@ -17,6 +17,7 @@ from jacobian_saes.training.geometric_median import compute_geometric_median
 from jacobian_saes.training.sae_trainer import SAETrainer
 from jacobian_saes.training.training_sae_pair import TrainingSAEPair, TrainingSAEPairConfig
 
+RANDOMIZED_LLM_WEIGHTS_PATH = "randomized_llm_weights.safetensors"
 
 class InterruptedException(Exception):
     pass
@@ -229,6 +230,9 @@ class SAETrainingRunner:
         log_feature_sparsity_path = f"{path}/{SPARSITY_PATH}"
         save_file(log_feature_sparsities, log_feature_sparsity_path)
 
+        if self.cfg.randomize_llm_weights:
+            save_file(self.model.state_dict(), f"{path}/{RANDOMIZED_LLM_WEIGHTS_PATH}")
+
         if trainer.cfg.log_to_wandb and os.path.exists(log_feature_sparsity_path):
             # Avoid wandb saving errors such as:
             #   ValueError: Artifact name may only contain alphanumeric characters, dashes, underscores, and dots. Invalid name: sae_google/gemma-2b_etc
@@ -242,6 +246,9 @@ class SAETrainingRunner:
 
             model_artifact.add_file(f"{path}/{SAE_WEIGHTS_PATH}")
             model_artifact.add_file(f"{path}/{SAE_CFG_PATH}")
+
+            if self.cfg.randomize_llm_weights:
+                model_artifact.add_file(f"{path}/{RANDOMIZED_LLM_WEIGHTS_PATH}")
 
             # remove this type ignore comment after https://github.com/wandb/wandb/issues/8248 is resolved
             wandb.log_artifact(model_artifact, aliases=wandb_aliases)  # type: ignore

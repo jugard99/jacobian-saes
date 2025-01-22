@@ -50,7 +50,6 @@ class SAEPairConfig:
     # dataset it was trained on details.
     context_size: int
     model_name: str
-    randomize_llm_weights: bool
     hook_name: str
     hook_layer: int
     hook_head_index: Optional[int]
@@ -62,6 +61,7 @@ class SAEPairConfig:
     # misc
     dtype: str
     device: str
+    randomize_llm_weights: bool = False
     activation_fn_kwargs: dict[str, Any] = field(default_factory=dict)
     is_pair: bool = False
     neuronpedia_id: Optional[str] = None
