@@ -1,7 +1,7 @@
 import argparse
 from dataclasses import dataclass
+import json
 import os
-from safetensors.torch import save_file
 import sys
 from tqdm import tqdm
 parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -62,7 +62,7 @@ k = sae_pair.cfg.activation_fn_kwargs["k"]
 
 dataset = load_dataset("allenai/c4", "en", split="validation", streaming=True)
 
-jac_abs_above_thresh = 0
+jac_abs_above_thresh = 0.0
 ce_scores = []
 kl_scores = []
 with torch.no_grad():
@@ -76,7 +76,7 @@ with torch.no_grad():
             acts = cache[sae_pair.cfg.hook_name]
             jacobian, acts_dict = run_sandwich(sae_pair, mlp_with_grads, acts)
 
-            jac_abs_above_thresh += torch.sum(torch.abs(jacobian) > args.threshold).item()
+            jac_abs_above_thresh += (jacobian.abs() > args.threshold).sum().item()
 
             recons_dict = get_recons_loss(
                 sae_pair,
@@ -104,15 +104,13 @@ with torch.no_grad():
             if pbar.n >= n_tokens:
                 break
 
-tensors_dict = {
-    "jac_abs_above_thresh": torch.tensor(jac_abs_above_thresh / pbar.n),
-    "ce_score": torch.cat(ce_scores).mean(),
-    "kl_score": torch.cat(kl_scores).mean(),
-    "thresh": torch.tensor(args.threshold),
-}
-metadata = {
+output_dict = {
+    "jac_abs_above_thresh": jac_abs_above_thresh / pbar.n,
+    "thresh": args.threshold,
+    "ce_score": torch.cat(ce_scores).mean().item(),
+    "kl_score": torch.cat(kl_scores).mean().item(),
     "path": args.path,
-    "tokens": str(n_tokens),
+    "tokens": n_tokens,
 }
 
 script_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -121,4 +119,7 @@ output_dir = os.path.join(script_dir, args.output_dir)
 if not os.path.exists(output_dir):
     os.makedirs(output_dir)
 output_path = os.path.join(output_dir, f"{args.path.split("/")[-1]}.safetensor")
-save_file(tensors_dict, output_path, metadata=metadata)
+
+with open(output_path, 'w') as f:
+    json.dump(output_dict, f)
+
