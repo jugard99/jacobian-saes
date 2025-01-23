@@ -1,3 +1,5 @@
+# Stage 1 of autointerp
+
 from functools import partial
 import os
 import sys
@@ -27,11 +29,12 @@ n_tokens = 1_000_000
 n_layers = 6
 split_percentage = "1%"
 output_dir = "latents"
+model_name = "EleutherAI/pythia-70m-deduped"
 
 api = wandb.Api()
 
 model = LanguageModel(
-    "EleutherAI/pythia-70m-deduped",
+    model_name,
     device_map=default_device,
     dispatch=True,
     torch_dtype="float16",
@@ -115,21 +118,13 @@ tokens = load_tokenized_data(
 )
 # Tokens should have the shape (n_batches,ctx_len)
 
-cache = FeatureCache(
-    model,
-    submodules,
-    batch_size=cfg.batch_size,
-)
+cache = FeatureCache(model, submodules, batch_size=cfg.batch_size)
 
 cache.run(cfg.n_tokens, tokens)
 
-cache.save_splits(
-    n_splits=cfg.n_splits,  # We split the activation and location indices into different files to make loading faster
-    save_dir=output_dir,
-)
+# We split the activation and location indices into different files to make loading faster
+cache.save_splits(n_splits=cfg.n_splits, save_dir=output_dir)
 
 # The config of the cache should be saved with the results such that it can be loaded later.
 
-cache.save_config(
-    save_dir=output_dir, cfg=cfg, model_name="EleutherAI/pythia-70m-deduped"
-)
+cache.save_config(save_dir=output_dir, cfg=cfg, model_name=model_name)

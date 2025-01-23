@@ -1,10 +1,14 @@
+# Stage 2 of autointerp: you already have the cached latents from `autointerp_caching`, this runs the actual autointerp
+
 import argparse
 import asyncio
-from functools import partial
 import os
-import orjson
 import sys
+from functools import partial
+
+import orjson
 import torch
+
 import wandb
 
 parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -32,8 +36,7 @@ parser.add_argument(
 parser.add_argument(
     "--is-output-sae",
     "-o",
-    type=bool,
-    default=False,
+    action='store_true',
     help="Whether the layer is the output of the SAE",
 )
 args = parser.parse_args()
@@ -97,10 +100,8 @@ loader = FeatureLoader(dataset, constructor=constructor, sampler=sampler)
 
 
 def explainer_postprocess(result):
-    with open(
-        f"{output_dir}/explanations/{module}/{result.record.feature}.txt",
-        "wb",
-    ) as f:
+    feature_idx = result.record.feature.feature_index
+    with open(f"{output_dir}/explanations/{module}/{feature_idx}.txt", "wb") as f:
         f.write(orjson.dumps(result.explanation))
 
     return result
@@ -129,7 +130,8 @@ def scorer_preprocess(result):
 # Saves the score to a file
 #! add module (and prob also model and SAE names) to folder path
 def scorer_postprocess(result, score_dir):
-    with open(f"{output_dir}/scores/{score_dir}/{result.record.feature}.txt", "wb") as f:
+    feature_idx = result.record.feature.feature_index
+    with open(f"{output_dir}/scores/{score_dir}/{module}/{feature_idx}.txt", "wb") as f:
         f.write(orjson.dumps(result.score))
 
 
