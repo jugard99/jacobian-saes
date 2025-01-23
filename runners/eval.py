@@ -1,21 +1,20 @@
 import argparse
-from dataclasses import dataclass
-import json
 import os
 import sys
+from dataclasses import dataclass
+
+import torch
+from datasets import load_dataset
+from safetensors.torch import save_file
 from tqdm import tqdm
+
 parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(parent_dir)
 
-from datasets import load_dataset
-import torch
-from jacobian_saes.utils import load_pretrained, run_sandwich
 from jacobian_saes.evals import get_recons_loss
+from jacobian_saes.utils import load_pretrained, run_sandwich
 
-
-parser = argparse.ArgumentParser(
-    description="Run evaluations of a JSAE"
-)
+parser = argparse.ArgumentParser(description="Run evaluations of a JSAE")
 parser.add_argument(
     "--output-dir",
     "-o",
@@ -56,15 +55,18 @@ class DummyActivationStore:
 dummy_activation_store = DummyActivationStore()
 
 
-sae_pair, model, mlp_with_grads, layer = load_pretrained(args.path,
-                                                         use_training_class=True)
+sae_pair, model, mlp_with_grads, layer = load_pretrained(
+    args.path, use_training_class=True
+)
 k = sae_pair.cfg.activation_fn_kwargs["k"]
 
 dataset = load_dataset("allenai/c4", "en", split="validation", streaming=True)
 
 jac_abs_above_thresh = 0.0
 ce_scores = []
+ce_scores2 = []
 kl_scores = []
+kl_scores2 = []
 with torch.no_grad():
     with tqdm(total=n_tokens) as pbar:
         for item in dataset:
@@ -87,30 +89,79 @@ with torch.no_grad():
                 compute_ce_loss=True,
             )
 
-            ce_scores.append(((
-                recons_dict["ce_loss_with_ablation"] - (
-                    (recons_dict["ce_loss_with_sae"] +
-                     recons_dict["ce_loss_with_sae2"]) / 2)
-            ) / (recons_dict["ce_loss_with_ablation"] -
-                 recons_dict["ce_loss_without_sae"] + 1e-6)).flatten())
-            
-            kl_scores.append(((
-                recons_dict["kl_div_with_ablation"] - (
-                    (recons_dict["kl_div_with_sae"] +
-                     recons_dict["kl_div_with_sae2"]) / 2)
-            ) / (recons_dict["kl_div_with_ablation"] + 1e-6)).flatten())
+            ce_scores.append(
+                (
+                    (
+                        recons_dict["ce_loss_with_ablation"]
+                        - recons_dict["ce_loss_with_sae"]
+                    )
+                    / (
+                        recons_dict["ce_loss_with_ablation"]
+                        - recons_dict["ce_loss_without_sae"]
+                    )
+                ).flatten()
+            )
+
+            ce_scores2.append(
+                (
+                    (
+                        recons_dict["ce_loss_with_ablation2"]
+                        - recons_dict["ce_loss_with_sae2"]
+                    )
+                    / (
+                        recons_dict["ce_loss_with_ablation2"]
+                        - recons_dict["ce_loss_without_sae"]
+                    )
+                ).flatten()
+            )
+
+            kl_scores.append(
+                (
+                    (
+                        recons_dict["kl_div_with_ablation"]
+                        - recons_dict["kl_div_with_sae"]
+                    )
+                    / recons_dict["kl_div_with_ablation"]
+                ).flatten()
+            )
+
+            kl_scores2.append(
+                (
+                    (
+                        recons_dict["kl_div_with_ablation2"]
+                        - recons_dict["kl_div_with_sae2"]
+                    )
+                    / recons_dict["kl_div_with_ablation2"]
+                ).flatten()
+            )
 
             pbar.update(acts.shape[1])
             if pbar.n >= n_tokens:
                 break
 
-output_dict = {
-    "jac_abs_above_thresh": jac_abs_above_thresh / pbar.n,
-    "thresh": args.threshold,
-    "ce_score": torch.cat(ce_scores).mean().item(),
-    "kl_score": torch.cat(kl_scores).mean().item(),
+
+def get_mean(tensors: list[torch.Tensor]) -> str:
+    concatenated = torch.cat(tensors)
+    mask = concatenated.isfinite()
+    mean = concatenated[mask].mean().item()
+    return str(mean)
+
+
+tensors_dict = {
+    "jac_abs_above_thresh": torch.tensor(jac_abs_above_thresh / pbar.n),
+    "thresh": torch.tensor(args.threshold),
+    "ce_scores": torch.cat(ce_scores),
+    "ce_scoress2": torch.cat(ce_scores2),
+    "kl_scores": torch.cat(kl_scores),
+    "kl_scores2": torch.cat(kl_scores2),
+}
+metadata = {
+    "mean_ce_score": get_mean(ce_scores),
+    "mean_ce_score2": get_mean(ce_scores2),
+    "mean_kl_score": get_mean(kl_scores),
+    "mean_kl_score2": get_mean(kl_scores2),
     "path": args.path,
-    "tokens": n_tokens,
+    "tokens": str(n_tokens),
 }
 
 script_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -118,8 +169,5 @@ output_dir = os.path.join(script_dir, args.output_dir)
 
 if not os.path.exists(output_dir):
     os.makedirs(output_dir)
-output_path = os.path.join(output_dir, f"{args.path.split("/")[-1]}.json")
-
-with open(output_path, 'w') as f:
-    json.dump(output_dict, f)
-
+output_path = os.path.join(output_dir, f"{args.path.split("/")[-1]}.safetensor")
+save_file(tensors_dict, output_path, metadata=metadata)

@@ -100,8 +100,7 @@ loader = FeatureLoader(dataset, constructor=constructor, sampler=sampler)
 
 
 def explainer_postprocess(result):
-    feature_idx = result.record.feature.feature_index
-    with open(f"{output_dir}/explanations/{module}/{feature_idx}.txt", "wb") as f:
+    with open(f"{output_dir}/explanations/{module}/{result.record.feature}.txt", "wb") as f:
         f.write(orjson.dumps(result.explanation))
 
     return result
@@ -131,12 +130,12 @@ def scorer_preprocess(result):
 #! add module (and prob also model and SAE names) to folder path
 def scorer_postprocess(result, score_dir):
     feature_idx = result.record.feature.feature_index
-    with open(f"{output_dir}/scores/{score_dir}/{module}/{feature_idx}.txt", "wb") as f:
+    with open(f"{output_dir}/scores/{score_dir}/{module}/{feature_idx}.json", "wb") as f:
         f.write(orjson.dumps(result.score))
 
 
-os.makedirs(f"{output_dir}/scores/detection", exist_ok=True)
-os.makedirs(f"{output_dir}/scores/fuzz", exist_ok=True)
+os.makedirs(f"{output_dir}/scores/detection/{module}", exist_ok=True)
+os.makedirs(f"{output_dir}/scores/fuzz/{module}", exist_ok=True)
 
 scorer_pipe = Pipe(
     process_wrapper(

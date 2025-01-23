@@ -5,7 +5,6 @@ import sys
 
 import torch
 from datasets import load_dataset
-from einops import rearrange, repeat
 from safetensors.torch import save_file
 from tqdm import tqdm
 
