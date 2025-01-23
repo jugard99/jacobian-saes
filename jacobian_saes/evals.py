@@ -178,6 +178,9 @@ def run_evals(
                     {
                         "kl_div_score2": reconstruction_metrics["kl_div_score2"],
                         "kl_div_with_sae2": reconstruction_metrics["kl_div_with_sae2"],
+                        "kl_div_with_ablation2": reconstruction_metrics[
+                            "kl_div_with_ablation2"
+                        ],
                     }
                 )
 
@@ -199,6 +202,9 @@ def run_evals(
                     {
                         "ce_loss_with_sae2": reconstruction_metrics[
                             "ce_loss_with_sae2"
+                        ],
+                        "ce_loss_with_ablation2": reconstruction_metrics[
+                            "ce_loss_with_ablation2"
                         ],
                         "ce_loss_score2": reconstruction_metrics["ce_loss_score2"],
                     }
@@ -382,12 +388,14 @@ def get_downstream_reconstruction_metrics(
         metrics_dict["kl_div_with_ablation"] = []
         if sae.cfg.use_jacobian_loss:
             metrics_dict["kl_div_with_sae2"] = []
+            metrics_dict["kl_div_with_ablation2"] = []
     if compute_ce_loss:
         metrics_dict["ce_loss_with_sae"] = []
         metrics_dict["ce_loss_without_sae"] = []
         metrics_dict["ce_loss_with_ablation"] = []
         if sae.cfg.use_jacobian_loss:
             metrics_dict["ce_loss_with_sae2"] = []
+            metrics_dict["ce_loss_with_ablation2"] = []
 
     batch_iter = range(n_batches)
     if verbose:
@@ -430,8 +438,8 @@ def get_downstream_reconstruction_metrics(
         ) / metrics["kl_div_with_ablation"]
         if sae.cfg.use_jacobian_loss:
             metrics["kl_div_score2"] = (
-                metrics["kl_div_with_ablation"] - metrics["kl_div_with_sae2"]
-            ) / metrics["kl_div_with_ablation"]
+                metrics["kl_div_with_ablation2"] - metrics["kl_div_with_sae2"]
+            ) / metrics["kl_div_with_ablation2"]
 
     if compute_ce_loss:
         metrics["ce_loss_score"] = (
@@ -439,8 +447,8 @@ def get_downstream_reconstruction_metrics(
         ) / (metrics["ce_loss_with_ablation"] - metrics["ce_loss_without_sae"])
         if sae.cfg.use_jacobian_loss:
             metrics["ce_loss_score2"] = (
-                metrics["ce_loss_with_ablation"] - metrics["ce_loss_with_sae2"]
-            ) / (metrics["ce_loss_with_ablation"] - metrics["ce_loss_without_sae"])
+                metrics["ce_loss_with_ablation2"] - metrics["ce_loss_with_sae2"]
+            ) / (metrics["ce_loss_with_ablation2"] - metrics["ce_loss_without_sae"])
 
     return metrics
 
@@ -930,6 +938,14 @@ def get_recons_loss(
         **model_kwargs,
     )
 
+    zero_abl_logits, zero_abl_ce_loss = model.run_with_hooks(
+        batch_tokens,
+        return_type="both",
+        fwd_hooks=[(hook_name, zero_ablate_hook)],
+        loss_per_token=True,
+        **model_kwargs,
+    )
+
     if sae.cfg.use_jacobian_loss:
         recons_logits2, recons_ce_loss2 = model.run_with_hooks(
             batch_tokens,
@@ -939,13 +955,13 @@ def get_recons_loss(
             **model_kwargs,
         )
 
-    zero_abl_logits, zero_abl_ce_loss = model.run_with_hooks(
-        batch_tokens,
-        return_type="both",
-        fwd_hooks=[(hook_name, zero_ablate_hook)],
-        loss_per_token=True,
-        **model_kwargs,
-    )
+        zero_abl_logits2, zero_abl_ce_loss2 = model.run_with_hooks(
+            batch_tokens,
+            return_type="both",
+            fwd_hooks=[(get_act_name("mlp_out", sae.cfg.hook_layer), zero_ablate_hook)],
+            loss_per_token=True,
+            **model_kwargs,
+        )
 
     def kl(original_logits: torch.Tensor, new_logits: torch.Tensor, eps: float = 1e-8):
         original_probs = torch.nn.functional.softmax(original_logits, dim=-1)
@@ -959,11 +975,13 @@ def get_recons_loss(
     if compute_kl:
         recons_kl_div = kl(original_logits, recons_logits)
         zero_abl_kl_div = kl(original_logits, zero_abl_logits)
-        recons_kl_div2 = kl(original_logits, recons_logits2)
         metrics["kl_div_with_sae"] = recons_kl_div
         metrics["kl_div_with_ablation"] = zero_abl_kl_div
         if sae.cfg.use_jacobian_loss:
+            recons_kl_div2 = kl(original_logits, recons_logits2)
+            zero_abl_kl_div2 = kl(original_logits, zero_abl_logits2)
             metrics["kl_div_with_sae2"] = recons_kl_div2
+            metrics["kl_div_with_ablation2"] = zero_abl_kl_div2
 
     if compute_ce_loss:
         metrics["ce_loss_with_sae"] = recons_ce_loss
@@ -971,6 +989,7 @@ def get_recons_loss(
         metrics["ce_loss_with_ablation"] = zero_abl_ce_loss
         if sae.cfg.use_jacobian_loss:
             metrics["ce_loss_with_sae2"] = recons_ce_loss2
+            metrics["ce_loss_with_ablation2"] = zero_abl_ce_loss2
 
     return metrics
 
