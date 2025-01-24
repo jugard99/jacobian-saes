@@ -62,6 +62,15 @@ k = sae_pair.cfg.activation_fn_kwargs["k"]
 
 dataset = load_dataset("allenai/c4", "en", split="validation", streaming=True)
 
+
+def safe_division(numerator, denominator, eps=1e-8):
+    # Add small epsilon to denominator to prevent division by zero
+    # Also clip the result to handle extreme values
+    result = numerator / (denominator + eps)
+    result[~result.isfinite()] = 0.0
+    return torch.clamp(result, min=0.0, max=2.0)
+
+
 jac_abs_above_thresh = 0.0
 ce_scores = []
 ce_scores2 = []
@@ -90,48 +99,36 @@ with torch.no_grad():
             )
 
             ce_scores.append(
-                (
-                    (
-                        recons_dict["ce_loss_with_ablation"]
-                        - recons_dict["ce_loss_with_sae"]
-                    )
-                    / (
-                        recons_dict["ce_loss_with_ablation"]
-                        - recons_dict["ce_loss_without_sae"]
-                    )
+                safe_division(
+                    recons_dict["ce_loss_with_ablation"]
+                    - recons_dict["ce_loss_with_sae"],
+                    recons_dict["ce_loss_with_ablation"]
+                    - recons_dict["ce_loss_without_sae"],
                 ).flatten()
             )
 
             ce_scores2.append(
-                (
-                    (
-                        recons_dict["ce_loss_with_ablation2"]
-                        - recons_dict["ce_loss_with_sae2"]
-                    )
-                    / (
-                        recons_dict["ce_loss_with_ablation2"]
-                        - recons_dict["ce_loss_without_sae"]
-                    )
+                safe_division(
+                    recons_dict["ce_loss_with_ablation2"]
+                    - recons_dict["ce_loss_with_sae2"],
+                    recons_dict["ce_loss_with_ablation2"]
+                    - recons_dict["ce_loss_without_sae"],
                 ).flatten()
             )
 
             kl_scores.append(
-                (
-                    (
-                        recons_dict["kl_div_with_ablation"]
-                        - recons_dict["kl_div_with_sae"]
-                    )
-                    / recons_dict["kl_div_with_ablation"]
+                safe_division(
+                    recons_dict["kl_div_with_ablation"]
+                    - recons_dict["kl_div_with_sae"],
+                    recons_dict["kl_div_with_ablation"],
                 ).flatten()
             )
 
             kl_scores2.append(
-                (
-                    (
-                        recons_dict["kl_div_with_ablation2"]
-                        - recons_dict["kl_div_with_sae2"]
-                    )
-                    / recons_dict["kl_div_with_ablation2"]
+                safe_division(
+                    recons_dict["kl_div_with_ablation2"]
+                    - recons_dict["kl_div_with_sae2"],
+                    recons_dict["kl_div_with_ablation2"],
                 ).flatten()
             )
 
@@ -151,7 +148,7 @@ tensors_dict = {
     "jac_abs_above_thresh": torch.tensor(jac_abs_above_thresh / pbar.n),
     "thresh": torch.tensor(args.threshold),
     "ce_scores": torch.cat(ce_scores),
-    "ce_scoress2": torch.cat(ce_scores2),
+    "ce_scores2": torch.cat(ce_scores2),
     "kl_scores": torch.cat(kl_scores),
     "kl_scores2": torch.cat(kl_scores2),
 }
