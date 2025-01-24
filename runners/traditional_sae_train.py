@@ -118,7 +118,8 @@ cfg = LanguageModelSAERunnerConfig(
     lr_scheduler_name="constant",  # constant learning rate with warmup. Could be better schedules out there.
     lr_warm_up_steps=lr_warm_up_steps,  # this can help avoid too many dead features initially.
     lr_decay_steps=lr_decay_steps,  # this will help us avoid overfitting.
-    l1_coefficient=0,  # we're using TopK so we don't need this
+    # l1_coefficient=0,  # we're using TopK so we don't need this
+    l1_coefficient=1e-9,  # SAE Lens is silly and crashes if this is zero
     train_batch_size_tokens=batch_size,
     context_size=args.context_size,
     # Activation Store Parameters
@@ -134,8 +135,8 @@ cfg = LanguageModelSAERunnerConfig(
     # WANDB
     log_to_wandb=True,
     wandb_project=args.wandb_project,
-    wandb_log_frequency=(1 if args.always_eval else 30),
-    eval_every_n_wandb_logs=(1 if args.always_eval else 20),
+    wandb_log_frequency=30,
+    eval_every_n_wandb_logs=20,
     # Misc
     device=device,
     seed=42,
