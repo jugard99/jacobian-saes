@@ -1,8 +1,10 @@
 # Stage 1 of autointerp
 
-from functools import partial
+import argparse
 import os
 import sys
+from functools import partial
+
 import wandb
 
 parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -20,6 +22,17 @@ from sae_auto_interp.utils import load_tokenized_data
 from jacobian_saes.sae_pair import SAEPair
 from jacobian_saes.utils import default_device
 
+parser = argparse.ArgumentParser(description="Cache SAE latents for autointerp")
+parser.add_argument(
+    "--traditional",
+    "-t",
+    action="store_false",
+    help="Use traditional SAE instead of JSAE",
+    dest="use_jsaes",
+)
+args = parser.parse_args()
+
+
 # Hyperparams
 batch_size = 8
 dataset_repo = "EleutherAI/rpj-v2-sample"
@@ -27,8 +40,8 @@ dataset_row = "raw_content"
 ctx_len = 256
 n_tokens = 1_000_000
 n_layers = 6
-split_percentage = "1%"
-output_dir = "latents"
+split_percentage = "2%"
+output_dir = f"latents/{'jsaes' if args.use_jsaes else 'traditional'}"
 model_name = "EleutherAI/pythia-70m-deduped"
 
 api = wandb.Api()
@@ -42,7 +55,7 @@ model = LanguageModel(
 
 submodules = {}
 for layer in range(n_layers):
-    wandb_artifact_path = f"lucyfarnik/jsaes_pythia70m1/sae_pythia-70m-deduped_blocks.{layer}.ln2.hook_normalized_16384:v0"
+    wandb_artifact_path = f"lucyfarnik/jsaes_pythia70m2/sae_pair_pythia-70m-deduped_layer{layer}_16384_J{1 if args.use_jsaes else 0.0}_k32:v0"
     local_path = "artifacts/" + wandb_artifact_path.split("/")[-1]
 
     # Download JSAE if not already cached

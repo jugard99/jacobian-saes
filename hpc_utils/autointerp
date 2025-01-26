@@ -1,3 +1,10 @@
 #! /bin/sh
 cd ~/work/jacobian_saes
-./hpc_utils/run ./runners/autointerp.py $@ -n autointerp --80g
+
+# ./hpc_utils/run ./runners/autointerp_caching.py -n autointerp_caching --80g
+for l in {0..5}
+do
+    ./hpc_utils/run ./runners/autointerp.py $@ -n autointerp --80g -l "$l"
+    ./hpc_utils/run ./runners/autointerp.py $@ -n autointerp --80g -l "$l" -o
+done
+# ./hpc_utils/run ./runners/autointerp_collect.py -n autointerp_collect

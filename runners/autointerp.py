@@ -39,6 +39,13 @@ parser.add_argument(
     action='store_true',
     help="Whether the layer is the output of the SAE",
 )
+parser.add_argument(
+    "--traditional",
+    "-t",
+    action="store_false",
+    help="Use traditional SAE instead of JSAE",
+    dest="use_jsaes",
+)
 args = parser.parse_args()
 
 # Hyperparams
@@ -52,8 +59,8 @@ n_quantiles = 10
 number_of_parallel_latents = 10
 n_features = 512
 sae_width = 16_384
-latents_dir = "latents"
-output_dir = "results/autointerp"
+latents_dir = f"latents/{'jsaes' if args.use_jsaes else 'traditional'}"
+output_dir = f"results/autointerp/{'jsaes' if args.use_jsaes else 'traditional'}"
 
 api = wandb.Api()
 
