@@ -21,7 +21,8 @@ from sae_auto_interp.features import FeatureDataset, FeatureLoader
 from sae_auto_interp.features.constructors import default_constructor
 from sae_auto_interp.features.samplers import sample
 from sae_auto_interp.pipeline import Pipe, Pipeline, process_wrapper
-from sae_auto_interp.scorers import DetectionScorer, FuzzingScorer
+from sae_auto_interp.scorers import FuzzingScorer
+# from sae_auto_interp.scorers import DetectionScorer, FuzzingScorer
 
 parser = argparse.ArgumentParser(
     description="Run autointerp on an SAE (note that you need to have run the caching script first)"
@@ -141,21 +142,21 @@ def scorer_postprocess(result, score_dir):
         f.write(orjson.dumps(result.score))
 
 
-os.makedirs(f"{output_dir}/scores/detection/{module}", exist_ok=True)
+# os.makedirs(f"{output_dir}/scores/detection/{module}", exist_ok=True)
 os.makedirs(f"{output_dir}/scores/fuzz/{module}", exist_ok=True)
 
 scorer_pipe = Pipe(
-    process_wrapper(
-        DetectionScorer(
-            client,
-            tokenizer=dataset.tokenizer,
-            batch_size=batch_size,
-            verbose=False,
-            log_prob=True,
-        ),
-        preprocess=scorer_preprocess,
-        postprocess=partial(scorer_postprocess, score_dir="detection"),
-    ),
+    # process_wrapper(
+    #     DetectionScorer(
+    #         client,
+    #         tokenizer=dataset.tokenizer,
+    #         batch_size=batch_size,
+    #         verbose=False,
+    #         log_prob=True,
+    #     ),
+    #     preprocess=scorer_preprocess,
+    #     postprocess=partial(scorer_postprocess, score_dir="detection"),
+    # ),
     process_wrapper(
         FuzzingScorer(
             client,
