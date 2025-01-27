@@ -40,7 +40,7 @@ dataset_row = "raw_content"
 ctx_len = 256
 n_tokens = 1_000_000
 n_layers = 6
-split_percentage = "2%"
+split_percentage = "1%"
 output_dir = f"latents/{'jsaes' if args.use_jsaes else 'traditional'}"
 model_name = "EleutherAI/pythia-70m-deduped"
 
