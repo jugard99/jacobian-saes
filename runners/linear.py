@@ -73,6 +73,10 @@ def is_jump_relu(xs: torch.Tensor, ys: torch.Tensor, tolerance=1e-2):
     if not (ys[zero_indices[0]:zero_indices[-1]] == 0).all():
         return False
 
+    # Make sure it includes the start or the finish
+    if not ys[0] == 0 and not ys[-1] == 0:
+        return False
+
     # Check linearity outside the zero region
     linear_region_mask = (xs > zero_end) | (xs < zero_start)
     linear_x = xs[linear_region_mask]
