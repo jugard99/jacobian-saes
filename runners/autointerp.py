@@ -38,7 +38,7 @@ parser.add_argument(
     "--is-output-sae",
     "-o",
     action='store_true',
-    help="Whether the layer is the output of the SAE",
+    help="Whether to use the post-MLP SAE",
 )
 parser.add_argument(
     "--traditional",
@@ -59,7 +59,8 @@ n_examples_test = 20
 n_quantiles = 10
 number_of_parallel_latents = 10
 n_features = 512
-sae_width = 16_384
+# sae_width = 16_384
+sae_width = 65_536
 latents_dir = f"latents/{'jsaes' if args.use_jsaes else 'traditional'}"
 output_dir = f"results/autointerp/{'jsaes' if args.use_jsaes else 'traditional'}"
 

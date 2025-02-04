@@ -467,8 +467,6 @@ class TrainingSAEPair(SAEPair):
         elif self.cfg.use_jacobian_loss:
             # Run the reconstructed activations through the MLP
             # mlp_out, mlp_act_grads = self.mlp(self.pre_mlp_ln(sae_out))
-            #! Bypassing the first SAE for now
-            # TODO gradually go from bypassing the first SAE to using it, ie always run both sae_in and sae_out through the MLP and have a scheduler go from 0 to 1 over time
             mlp_out, mlp_act_grads = self.mlp(sae_in)
             sae_out2, feature_acts2, topk_indices2, _mse_loss2, l1_loss2 = (
                 self.apply_sae(mlp_out, True, current_l1_coefficient)

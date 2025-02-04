@@ -39,10 +39,9 @@ dataset_repo = "EleutherAI/rpj-v2-sample"
 dataset_row = "raw_content"
 ctx_len = 256
 n_tokens = 1_000_000
-n_layers = 6
 split_percentage = "1%"
 output_dir = f"latents/{'jsaes' if args.use_jsaes else 'traditional'}"
-model_name = "EleutherAI/pythia-70m-deduped"
+model_name = "EleutherAI/pythia-410m-deduped"
 
 api = wandb.Api()
 
@@ -54,8 +53,10 @@ model = LanguageModel(
 )
 
 submodules = {}
-for layer in range(n_layers):
-    wandb_artifact_path = f"lucyfarnik/jsaes_pythia70m2/sae_pair_pythia-70m-deduped_layer{layer}_16384_J{1 if args.use_jsaes else 0.0}_k32:v0"
+for layer in range(24):
+# for layer in range(6):
+    wandb_artifact_path = f"lucyfarnik/pythia-410m-v2/sae_pair_pythia-410m-deduped_layer{layer}_65536_J{0.5 if args.use_jsaes else 0}_k32:v0"
+    # wandb_artifact_path = f"lucyfarnik/jsaes_pythia70m2/sae_pair_pythia-70m-deduped_layer{layer}_16384_J{1 if args.use_jsaes else 0.0}_k32:v0"
     local_path = "artifacts/" + wandb_artifact_path.split("/")[-1]
 
     # Download JSAE if not already cached

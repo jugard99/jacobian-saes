@@ -1,7 +1,3 @@
-"""Most of this is just copied over from Arthur's code and slightly simplified:
-https://github.com/ArthurConmy/sae/blob/main/sae/model.py
-"""
-
 import json
 import os
 import warnings

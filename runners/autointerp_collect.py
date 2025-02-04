@@ -31,5 +31,5 @@ for model_name in ["jsaes", "traditional"]:
             "num_false": len(all_bools) - num_true,
         }
 
-    with open(f"results/autointerp/{model_name}/{experiment_name}_results.json", "w") as f:
+    with open(f"results/autointerp/{model_name}_{experiment_name}_results.json", "w") as f:
         json.dump(all_data, f)
