@@ -6,18 +6,25 @@
 # -> --gputype rtx_3090 -n my_name --cmd python ./runners/autointerp.py -j 10
 
 import argparse
+import random
 
-parser = argparse.ArgumentParser(description="CLI wrapper to extract specific flags and pass the rest.")
+parser = argparse.ArgumentParser(
+    description="CLI wrapper to extract specific flags and pass the rest."
+)
 
 gpu_group = parser.add_mutually_exclusive_group()
-gpu_group.add_argument('--gputype', type=str, help="Specify GPU type directly")
-gpu_group.add_argument('--2080', dest="_2080", action='store_true', help="Use 2080 GPU")
-gpu_group.add_argument('--3090', dest="_3090", action='store_true', help="Use 3090 GPU")
-gpu_group.add_argument('--a100', action='store_true', help="Use A100 GPU")
-gpu_group.add_argument('--80g', dest="_80g", action='store_true', help="Use the 80gig A100s")
+gpu_group.add_argument("--gputype", type=str, help="Specify GPU type directly")
+gpu_group.add_argument("--2080", dest="_2080", action="store_true", help="Use 2080 GPU")
+gpu_group.add_argument("--3090", dest="_3090", action="store_true", help="Use 3090 GPU")
+gpu_group.add_argument("--a100", action="store_true", help="Use A100 GPU")
+gpu_group.add_argument(
+    "--80g", dest="_80g", action="store_true", help="Use the 80gig A100s"
+)
 
-parser.add_argument('runner_script', type=str, help="Path to the runner script")
-parser.add_argument("-n", "--name", default="jsae", type=str, help="Name of the job")
+parser.add_argument("runner_script", type=str, help="Path to the runner script")
+parser.add_argument(
+    "-n", "--name", default="jsae[UNIQUE-ID]", type=str, help="Name of the job"
+)
 parser.add_argument("-q", "--queue", default="cnu", type=str, help="Queue for the job")
 
 # Parse known arguments
@@ -35,6 +42,10 @@ elif args._80g:
     gpu_flag = "--gputype A100 --exclude_40G_A100"
 else:
     gpu_flag = ""
+
+# if the user didn't change the run name, add a random id at the end
+if args.name == "jsae[UNIQUE-ID]":
+    args.name = f"jsae{random.randint(1000, 9999)}"
 
 # Prepare the output string
 output_args = [
