@@ -19,6 +19,11 @@ parser.add_argument(
     "--context-size", "-c", type=int, default=2048, help="Max context size"
 )
 parser.add_argument(
+    "--norm",
+    action="store_true",
+    help="Normalize the Jacobian before taking the histogram",
+)
+parser.add_argument(
     "--output-dir",
     "-o",
     type=str,
@@ -48,10 +53,36 @@ k = sae_pair.cfg.activation_fn_kwargs["k"]
 
 dataset = load_dataset("allenai/c4", "en", split="validation", streaming=True)
 
+if args.norm:
+    n_tokens_norm_est = 100_000
+    jac_norms_sum = 0
+    # estimate the empirical mean norm of the Jacobians
+    with torch.no_grad():
+        with tqdm(total=n_tokens_norm_est, desc="Estimating norm") as pbar:
+            for item in dataset:
+                _, cache = model.run_with_cache(
+                    item["text"],
+                    stop_at_layer=layer + 1,
+                    names_filter=[sae_pair.cfg.hook_name],
+                )
+                acts = cache[sae_pair.cfg.hook_name][:, 1:]
+
+                if acts.shape[1] > args.context_size:  # Preventing OOM
+                    acts = acts[:, : args.context_size]
+
+                jacobian, _ = run_sandwich(sae_pair, mlp_with_grads, acts)
+                jac_norms_sum += jacobian.pow(2).mean(dim=(-2, -1)).sqrt().sum().item()
+
+                pbar.update(acts.shape[1])
+                if pbar.n >= n_tokens_norm_est:
+                    break
+    mean_jac_norm = jac_norms_sum / pbar.n
+print("Mean Jacobian norm:", mean_jac_norm)
+
 # for the non-averaged histogram
-bins = 1100
+bins = 1500 if args.norm else 1100
 min_val = 0
-max_val = 1.1
+max_val = 1.5 if args.norm else 1.1
 bin_edges = torch.linspace(min_val, max_val, bins + 1)
 bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
 hist = torch.zeros(bins, device=sae_pair.cfg.device)
@@ -64,6 +95,7 @@ summed_abs_jacobians = torch.zeros(
 with torch.no_grad():
     with tqdm(total=n_tokens) as pbar:
         for item in dataset:
+            # Todo batching (if I have the time)
             _, cache = model.run_with_cache(
                 item["text"],
                 stop_at_layer=layer + 1,
@@ -76,11 +108,13 @@ with torch.no_grad():
 
             jacobian, acts_dict = run_sandwich(sae_pair, mlp_with_grads, acts)
 
+            if args.norm:
+                jacobian /= mean_jac_norm
+
             hist += torch.histc(jacobian.abs().flatten(), bins=bins, min=min_val, max=max_val)
 
             topk1 = acts_dict["topk_indices1"].unsqueeze(-1)
             topk2 = acts_dict["topk_indices2"].unsqueeze(-2)
-            #! Plausibly wrong indexing alingment
             summed_abs_jacobians[topk2, topk1] += jacobian.abs().sum(dim=(0, 1))
 
             pbar.update(acts.shape[1])
@@ -115,5 +149,5 @@ output_dir = os.path.join(script_dir, args.output_dir)
 
 if not os.path.exists(output_dir):
     os.makedirs(output_dir)
-output_path = os.path.join(output_dir, f"{args.path.split("/")[-1]}.safetensor")
+output_path = os.path.join(output_dir, f"{args.path.split("/")[-1]}{'_normed' if args.norm else ''}.safetensor")
 save_file(tensors_dict, output_path, metadata=metadata)

@@ -87,7 +87,9 @@ with torch.no_grad():
             acts = cache[sae_pair.cfg.hook_name]
             jacobian, acts_dict = run_sandwich(sae_pair, mlp_with_grads, acts)
 
-            jac_abs_above_thresh += (jacobian.abs() > args.threshold).sum().item()
+            jac_norm_inv = jacobian.pow(2).mean().rsqrt() + 1e-20
+            jac_normed = jacobian * jac_norm_inv
+            jac_abs_above_thresh += (jac_normed.abs() > args.threshold).sum().item()
 
             recons_dict = get_recons_loss(
                 sae_pair,

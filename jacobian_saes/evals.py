@@ -26,20 +26,21 @@ from jacobian_saes.toolkit.pretrained_saes_directory import (
 from jacobian_saes.training.activations_store import ActivationsStore
 
 jacobian_sparsity_metrics = [
-    "jac_l0",
     "jac_l1",
-    "jac_row_l0_mean",
-    "jac_row_l0_std",
-    "jac_num_empty_rows",
-    "jac_col_l0_mean",
-    "jac_col_l0_std",
-    "jac_num_empty_cols",
     "jac_hist",
     "jac_abs_hist",
+    "jac_normed_per_token_hist",
+    "jac_normed_per_token_abs_hist",
+    "jac_normed_per_batch_hist",
+    "jac_normed_per_batch_abs_hist",
+    "jac_norm_per_token_hist",
+    "jac_norm_per_batch",
 ]
-jacobian_sparsity_thresholds = [0.005, 0.01]
+jacobian_sparsity_thresholds = [0.005, 0.01, 0.02, 0.04]
 for thresh in jacobian_sparsity_thresholds:
     jacobian_sparsity_metrics.append(f"jac_abs_above_{thresh}")
+    jacobian_sparsity_metrics.append(f"jac_normed_per_token_abs_above_{thresh}")
+    jacobian_sparsity_metrics.append(f"jac_normed_per_batch_abs_above_{thresh}")
 # Anything with "2" in the name also refers to Jacobian SAEs
 # (it refers to reconstructing using the second SAE)
 
@@ -731,32 +732,60 @@ def get_sparsity_and_variance_metrics(
                     "d_mlp ... seq_pos k2 -> ... seq_pos k2 k1",
                 )
                 jacobian_abs = jacobian.abs()
-                jac_row_l0 = (jacobian_abs > 0).sum(dim=-1).float()
-                jac_col_l0 = (jacobian_abs > 0).sum(dim=-2).float()
-                metric_dict["jac_l0"].append(
-                    (jacobian_abs > 0).sum(dim=(-1, -2)).float()
+
+                jac_norm_per_token_inv = (
+                    jacobian.pow(2).mean(dim=(-2, -1), keepdim=True).rsqrt() + 1e-20
                 )
+                jac_normed_per_token = jacobian * jac_norm_per_token_inv
+                jac_normed_per_token_abs = jac_normed_per_token.abs()
+
+                jac_norm_per_batch_inv = jacobian.pow(2).mean().rsqrt() + 1e-20
+                jac_normed_per_batch = jacobian * jac_norm_per_batch_inv
+                jac_normed_per_batch_abs = jac_normed_per_batch.abs()
+
                 metric_dict["jac_l1"].append(jacobian_abs.sum(dim=(-1, -2)))
-                metric_dict["jac_row_l0_mean"].append(jac_row_l0.mean(dim=-1))
-                metric_dict["jac_row_l0_std"].append(jac_row_l0.std(dim=-1))
-                metric_dict["jac_num_empty_rows"].append(
-                    (jac_row_l0 == 0).sum(dim=-1).float()
-                )
-                metric_dict["jac_col_l0_mean"].append(jac_col_l0.mean(dim=-1))
-                metric_dict["jac_col_l0_std"].append(jac_col_l0.std(dim=-1))
-                metric_dict["jac_num_empty_cols"].append(
-                    (jac_col_l0 == 0).sum(dim=-1).float()
-                )
                 # The averaging here is hacky
                 metric_dict["jac_hist"].append(
                     jacobian.flatten(start_dim=1).sort(dim=1).values.mean(dim=0)
                 )
+                metric_dict["jac_normed_per_token_hist"].append(
+                    jac_normed_per_token.flatten(start_dim=1)
+                    .sort(dim=1)
+                    .values.mean(dim=0)
+                )
+                metric_dict["jac_normed_per_batch_hist"].append(
+                    jac_normed_per_batch.flatten(start_dim=1)
+                    .sort(dim=1)
+                    .values.mean(dim=0)
+                )
                 metric_dict["jac_abs_hist"].append(
                     jacobian_abs.flatten(start_dim=1).sort(dim=1).values.mean(dim=0)
+                )
+                metric_dict["jac_normed_per_token_abs_hist"].append(
+                    jac_normed_per_token_abs.flatten(start_dim=1)
+                    .sort(dim=1)
+                    .values.mean(dim=0)
+                )
+                metric_dict["jac_normed_per_batch_abs_hist"].append(
+                    jac_normed_per_batch_abs.flatten(start_dim=1)
+                    .sort(dim=1)
+                    .values.mean(dim=0)
+                )
+                metric_dict["jac_norm_per_token_hist"].append(
+                    (1 / jac_norm_per_token_inv).flatten().sort().values
+                )
+                metric_dict["jac_norm_per_batch"].append(
+                    (1 / jac_norm_per_batch_inv).unsqueeze(dim=0)
                 )
                 for thresh in jacobian_sparsity_thresholds:
                     metric_dict[f"jac_abs_above_{thresh}"].append(
                         (jacobian_abs > thresh).sum(dim=(-1, -2)).float()
+                    )
+                    metric_dict[f"jac_normed_per_token_abs_above_{thresh}"].append(
+                        (jac_normed_per_token_abs > thresh).sum(dim=(-1, -2)).float()
+                    )
+                    metric_dict[f"jac_normed_per_batch_abs_above_{thresh}"].append(
+                        (jac_normed_per_batch_abs > thresh).sum(dim=(-1, -2)).float()
                     )
 
         if compute_variance_metrics:

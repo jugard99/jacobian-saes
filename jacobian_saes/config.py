@@ -82,6 +82,8 @@ class LanguageModelSAERunnerConfig:
         scale_sparsity_penalty_by_decoder_norm (bool): Whether to scale the sparsity penalty by the decoder norm.
         l1_warm_up_steps (int): The number of warm-up steps for the L1 loss.
         use_jacobian_loss (bool): Whether to use the Jacobian loss.
+        normalize_jac_loss (bool): Whether to normalize the Jacobian loss (if true then we're minimizing L1/L2, otherwise we're minimizing L1).
+        norm_jac_across_batch (bool): Whether to normalize the Jacobian loss across the batch (True) or for each token individually (False).
         jacobian_coefficient (float): The coefficient for the Jacobian loss.
         jacboian_warm_up_steps (int): The number of warm-up steps for the Jacobian loss scheduler.
         mlp_out_mse_coefficient (float): The coefficient for the post-MLP reconstruction loss.
@@ -193,6 +195,8 @@ class LanguageModelSAERunnerConfig:
     scale_sparsity_penalty_by_decoder_norm: bool = False
     l1_warm_up_steps: int = 0
     use_jacobian_loss: bool = False
+    normalize_jac_loss: bool = False
+    norm_jac_across_batch: bool = False
     jacobian_coefficient: float = 5e2
     jacobian_warm_up_steps: int = 0
     mlp_out_mse_coefficient: float = 1.0
@@ -206,6 +210,7 @@ class LanguageModelSAERunnerConfig:
     lr_end: Optional[float] = None  # only used for cosine annealing, default is lr / 10
     lr_decay_steps: int = 0
     n_restart_cycles: int = 1  # used only for cosineannealingwarmrestarts
+    gradient_accumulation_steps: int = 1
 
     ## FineTuning
     finetuning_method: Optional[str] = None  # scale, decoder or unrotated_decoder
@@ -274,6 +279,12 @@ class LanguageModelSAERunnerConfig:
                 jac = self.jacobian_coefficient
                 if int(jac) == jac:
                     jac = int(jac)
+                if self.normalize_jac_loss and jac > 0:
+                    jac = f"{jac}n"
+                    if self.norm_jac_across_batch:
+                        jac += "b"
+                    else:
+                        jac += "t"
                 k = self.activation_fn_kwargs["k"]
                 model_name = self.model_name
                 if self.randomize_llm_weights:
@@ -424,6 +435,8 @@ class LanguageModelSAERunnerConfig:
             "l1_coefficient": self.l1_coefficient,
             "lp_norm": self.lp_norm,
             "use_jacobian_loss": self.use_jacobian_loss,
+            "normalize_jac_loss": self.normalize_jac_loss,
+            "norm_jac_across_batch": self.norm_jac_across_batch,
             "jacobian_coefficient": self.jacobian_coefficient,
             "jacobian_warm_up_steps": self.jacobian_warm_up_steps,
             "mlp_out_mse_coefficient": self.mlp_out_mse_coefficient,

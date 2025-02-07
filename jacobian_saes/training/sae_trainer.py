@@ -250,7 +250,10 @@ class SAETrainer:
                 sae.set_decoder_norm_to_unit_norm(True)
 
         # log and then reset the feature sparsity every feature_sampling_window steps
-        if (self.n_training_steps + 1) % self.cfg.feature_sampling_window == 0:
+        sample_every_n = (
+            self.cfg.feature_sampling_window * self.cfg.gradient_accumulation_steps
+        )
+        if (self.n_training_steps + 1) % sample_every_n == 0:
             if self.cfg.log_to_wandb:
                 sparsity_log_dict = self._build_sparsity_log_dict()
                 wandb.log(sparsity_log_dict, step=self.n_training_steps)
@@ -286,22 +289,29 @@ class SAETrainer:
                     )
                 self.n_frac_active_tokens += self.cfg.train_batch_size_tokens
 
+        # Divide by the number of accumulation steps
+        loss = train_step_output.loss / self.cfg.gradient_accumulation_steps
+
         # Scaler will rescale gradients if autocast is enabled
-        self.scaler.scale(
-            train_step_output.loss
-        ).backward()  # loss.backward() if not autocasting
-        self.scaler.unscale_(self.optimizer)  # needed to clip correctly
-        # TODO: Work out if grad norm clipping should be in config / how to test it.
-        torch.nn.utils.clip_grad_norm_(sae.parameters(), 1.0)
-        self.scaler.step(self.optimizer)  # just ctx.optimizer.step() if not autocasting
-        self.scaler.update()
+        self.scaler.scale(loss).backward()  # loss.backward() if not autocasting
 
-        if self.cfg.normalize_sae_decoder:
-            sae.remove_gradient_parallel_to_decoder_directions(False)
-            if self.cfg.use_jacobian_loss:
-                sae.remove_gradient_parallel_to_decoder_directions(True)
+        # If it's the step where we should step the optimizer
+        if (self.n_training_steps + 1) % self.cfg.gradient_accumulation_steps == 0:
+            self.scaler.unscale_(self.optimizer)  # needed to clip correctly
+            # TODO: Work out if grad norm clipping should be in config / how to test it.
+            torch.nn.utils.clip_grad_norm_(sae.parameters(), 1.0)
+            self.scaler.step(
+                self.optimizer
+            )  # just ctx.optimizer.step() if not autocasting
+            self.scaler.update()
 
-        self.optimizer.zero_grad()
+            if self.cfg.normalize_sae_decoder:
+                sae.remove_gradient_parallel_to_decoder_directions(False)
+                if self.cfg.use_jacobian_loss:
+                    sae.remove_gradient_parallel_to_decoder_directions(True)
+
+            self.optimizer.zero_grad()
+
         self.lr_scheduler.step()
         self.l1_scheduler.step()
         self.jacobian_scheduler.step()
@@ -310,7 +320,10 @@ class SAETrainer:
 
     @torch.no_grad()
     def _log_train_step(self, step_output: TrainStepOutput):
-        if (self.n_training_steps + 1) % self.cfg.wandb_log_frequency == 0:
+        log_every_n = (
+            self.cfg.wandb_log_frequency * self.cfg.gradient_accumulation_steps
+        )
+        if (self.n_training_steps + 1) % log_every_n == 0:
             wandb.log(
                 self._build_train_step_log_dict(
                     output=step_output,
@@ -398,9 +411,12 @@ class SAETrainer:
     @torch.no_grad()
     def _run_and_log_evals(self):
         # record loss frequently, but not all the time.
-        if (self.n_training_steps + 1) % (
-            self.cfg.wandb_log_frequency * self.cfg.eval_every_n_wandb_logs
-        ) == 0:
+        eval_every_n = (
+            self.cfg.wandb_log_frequency
+            * self.cfg.eval_every_n_wandb_logs
+            * self.cfg.gradient_accumulation_steps
+        )
+        if (self.n_training_steps + 1) % eval_every_n == 0:
             self.sae.eval()
             eval_metrics, _ = run_evals(
                 sae=self.sae,
@@ -500,8 +516,8 @@ class SAETrainer:
 
     @torch.no_grad()
     def _update_pbar(self, step_output: TrainStepOutput, pbar: tqdm, update_interval: int = 100):  # type: ignore
-
-        if self.n_training_steps % update_interval == 0:
+        update_every_n = update_interval * self.cfg.gradient_accumulation_steps
+        if self.n_training_steps % update_every_n == 0:
             description = f"{self.n_training_steps}| MSE {step_output.mse_loss:.1e} | "
             if self.cfg.use_jacobian_loss:
                 description += f"MSE_out {step_output.mse_loss2:.1e} | "

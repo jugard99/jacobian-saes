@@ -2,6 +2,7 @@ import argparse
 import math
 import os
 import sys
+
 parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(parent_dir)
 
@@ -11,17 +12,33 @@ from jacobian_saes import LanguageModelSAERunnerConfig, SAETrainingRunner
 
 parser = argparse.ArgumentParser(description="Train a Jacobian SAE")
 parser.add_argument(
+    "--accum",
+    "--accumulation-steps",
+    dest="gradient_accumulation_steps",
+    type=int,
+    default=1,
+    help="Number of gradient accumulation steps",
+)
+parser.add_argument(
     "--always-eval",
     action="store_true",
     help="Run evaluations and wandb logging at every training step (only for debugging)",
 )
 parser.add_argument("--batch-size", "-b", type=int, default=4096, help="Batch size")
-parser.add_argument("--buffer-size", type=int, default=32, help="Buffer size (number of batches in buffer)")
+parser.add_argument(
+    "--buffer-size",
+    type=int,
+    default=32,
+    help="Buffer size (number of batches in buffer)",
+)
 parser.add_argument("--context-size", "-c", type=int, default=2048, help="Context size")
 parser.add_argument(
     "--expansion-factor", "-e", type=int, default=32, help="Expansion factor"
 )
 parser.add_argument("--eval-batch-size", type=int, default=8, help="Eval batch size")
+parser.add_argument(
+    "--eval-n-batches", type=int, default=10, help="Number of eval batches"
+)
 parser.add_argument(
     "--jacobian-coef", "-j", type=float, default=1, help="Jacobian coefficient"
 )
@@ -37,14 +54,33 @@ parser.add_argument(
     choices=["70m", "160m", "410m", "1b", "1.4b", "2.8b", "6.9b", "12b"],
 )
 parser.add_argument(
+    "--no-jac-normed",
+    action="store_false",
+    dest="normalize_jac_loss",
+    help="Normalize Jacobian by L2 norm",
+)
+parser.add_argument(
+    "--norm-jac-per-token",
+    action="store_false",
+    dest="norm_jac_across_batch",
+    help="Normalize Jacobian by L2 norm",
+)
+parser.add_argument(
     "--out-mse-coef",
     dest="mlp_out_mse_coefficient",
     type=float,
     default=1.0,
     help="Coefficient for the post-MLP MSE",
 )
-parser.add_argument("-p", "--precision", type=int, default=32, help="Floating point precision")
-parser.add_argument("-r", "--randomize-weights", action="store_true", help="Randomize the weights of the LLM")
+parser.add_argument(
+    "-p", "--precision", type=int, default=32, help="Floating point precision"
+)
+parser.add_argument(
+    "-r",
+    "--randomize-weights",
+    action="store_true",
+    help="Randomize the weights of the LLM",
+)
 parser.add_argument("--store-batch-size", type=int, default=16, help="Store batch size")
 parser.add_argument(
     "--tokens",
@@ -134,8 +170,11 @@ cfg = LanguageModelSAERunnerConfig(
     lr_scheduler_name="constant",  # constant learning rate with warmup. Could be better schedules out there.
     lr_warm_up_steps=lr_warm_up_steps,  # this can help avoid too many dead features initially.
     lr_decay_steps=lr_decay_steps,  # this will help us avoid overfitting.
+    gradient_accumulation_steps=args.gradient_accumulation_steps,
     l1_coefficient=0,  # we're using TopK so we don't need this
     use_jacobian_loss=True,
+    normalize_jac_loss=args.normalize_jac_loss,
+    norm_jac_across_batch=args.norm_jac_across_batch,
     jacobian_coefficient=args.jacobian_coef,
     jacobian_warm_up_steps=jacobian_warm_up_steps,
     mlp_out_mse_coefficient=args.mlp_out_mse_coefficient,
@@ -146,6 +185,7 @@ cfg = LanguageModelSAERunnerConfig(
     training_tokens=total_training_tokens,  # 100 million tokens is quite a few, but we want to see good stats. Get a coffee, come back.
     store_batch_size_prompts=args.store_batch_size,
     eval_batch_size_prompts=args.eval_batch_size,
+    n_eval_batches=args.eval_n_batches,
     # Resampling protocol
     use_ghost_grads=False,  # we don't use ghost grads anymore.
     feature_sampling_window=1000,  # this controls our reporting of feature sparsity stats
