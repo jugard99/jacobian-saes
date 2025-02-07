@@ -1,4 +1,4 @@
 #! /bin/sh
 cd ~/work/jacobian_saes
-lbatch -c 1 -g 1 -t 48 -m 22 -a COSC020762 --conda-env base \
+lbatch -c 1 -g 1 -t 336 -m 22 -a COSC020762 --conda-env base \
     $(./hpc_utils/extract_args $@)
