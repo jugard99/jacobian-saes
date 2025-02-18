@@ -22,6 +22,7 @@ from jacobian_saes.toolkit.pretrained_sae_loaders import (
     read_sae_from_disk,
 )
 from jacobian_saes.training.mlp_with_act_grads import MLPWithActGrads
+from jacobian_saes.training.sparsity_metrics import sparsity_metrics
 
 SPARSITY_PATH = "sparsity.safetensors"
 SAE_WEIGHTS_PATH = "sae_weights.safetensors"
@@ -61,8 +62,7 @@ class TrainingSAEPairConfig(SAEPairConfig):
     init_encoder_as_decoder_transpose: bool = False
     scale_sparsity_penalty_by_decoder_norm: bool = False
     use_jacobian_loss: bool = False
-    normalize_jac_loss: bool = False
-    norm_jac_across_batch: bool = False
+    sparsity_metric: str = "l1"
     jacobian_coefficient: float = 5e2
     mlp_out_mse_coefficient: float = 1.0
 
@@ -104,8 +104,7 @@ class TrainingSAEPairConfig(SAEPairConfig):
             init_encoder_as_decoder_transpose=cfg.init_encoder_as_decoder_transpose,
             scale_sparsity_penalty_by_decoder_norm=cfg.scale_sparsity_penalty_by_decoder_norm,
             use_jacobian_loss=cfg.use_jacobian_loss,
-            normalize_jac_loss=cfg.normalize_jac_loss,
-            norm_jac_across_batch=cfg.norm_jac_across_batch,
+            sparsity_metric=cfg.sparsity_metric,
             jacobian_coefficient=cfg.jacobian_coefficient,
             mlp_out_mse_coefficient=cfg.mlp_out_mse_coefficient,
             normalize_activations=cfg.normalize_activations,
@@ -156,8 +155,7 @@ class TrainingSAEPairConfig(SAEPairConfig):
             "scale_sparsity_penalty_by_decoder_norm": self.scale_sparsity_penalty_by_decoder_norm,
             "normalize_activations": self.normalize_activations,
             "use_jacobian_loss": self.use_jacobian_loss,
-            "normalize_jac_loss": self.normalize_jac_loss,
-            "norm_jac_across_batch": self.norm_jac_across_batch,
+            "sparsity_metric": self.sparsity_metric,
             "jacobian_coefficient": self.jacobian_coefficient,
             "mlp_out_mse_coefficient": self.mlp_out_mse_coefficient,
         }
@@ -489,21 +487,10 @@ class TrainingSAEPair(SAEPair):
                 "d_mlp ... seq_pos k2 -> ... seq_pos k2 k1",
             )
 
-            if self.cfg.normalize_jac_loss:
-                # normalizing by the RMS; doing this with rsqrt instead of sqrt for efficiency
-                if self.cfg.norm_jac_across_batch:
-                    jac_norm_inv = jacobian.pow(2).mean().rsqrt() + 1e-20
-                else:
-                    jac_norm_inv = (
-                        jacobian.pow(2).mean(dim=(-2, -1), keepdim=True).rsqrt() + 1e-20
-                    )
-                _jacobian_loss = (jacobian * jac_norm_inv).abs().mean()
-            else:
-                _jacobian_loss = jacobian.abs().mean()
-
-            mse_loss2 = self.cfg.mlp_out_mse_coefficient * _mse_loss2
-
+            _jacobian_loss = sparsity_metrics[self.cfg.sparsity_metric](jacobian)
             jacobian_loss = current_jacobian_coefficient * _jacobian_loss
+            
+            mse_loss2 = self.cfg.mlp_out_mse_coefficient * _mse_loss2
 
             loss = (
                 mse_loss
@@ -792,12 +779,8 @@ class TrainingSAEPair(SAEPair):
         jac = self.cfg.jacobian_coefficient
         if int(jac) == jac:
             jac = int(jac)
-        if self.cfg.normalize_jac_loss and jac > 0:
-            jac = f"{jac}n"
-            if self.cfg.norm_jac_across_batch:
-                jac += "b"
-            else:
-                jac += "t"
+        if jac > 0:
+            jac = f"{jac}{self.cfg.sparsity_metric}"
         model_name = self.cfg.model_name
         if self.cfg.randomize_llm_weights:
             model_name += "-randomized"

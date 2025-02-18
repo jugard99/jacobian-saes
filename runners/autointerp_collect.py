@@ -22,6 +22,8 @@ for model_name in ["jsaes", "traditional"]:
             with open(f"{dir_name}/{module_name}/{file_name}") as f:
                 for result_dict in json.load(f):
                     all_bools.append(result_dict["correct"])
+        if len(all_bools) == 0:
+            continue
         all_bools = np.array(all_bools)
         
         num_true = np.sum(all_bools).tolist()

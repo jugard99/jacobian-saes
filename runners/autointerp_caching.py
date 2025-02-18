@@ -55,7 +55,7 @@ model = LanguageModel(
 submodules = {}
 for layer in range(24):
 # for layer in range(6):
-    wandb_artifact_path = f"lucyfarnik/pythia-410m-v2/sae_pair_pythia-410m-deduped_layer{layer}_65536_J{0.5 if args.use_jsaes else 0}_k32:v0"
+    wandb_artifact_path = f"lucyfarnik/jsaes-scad/sae_pair_pythia-410m-deduped_layer{layer}_65536_J{'0.5scad' if args.use_jsaes else 0}_k32:v0"
     # wandb_artifact_path = f"lucyfarnik/jsaes_pythia70m2/sae_pair_pythia-70m-deduped_layer{layer}_16384_J{1 if args.use_jsaes else 0.0}_k32:v0"
     local_path = "artifacts/" + wandb_artifact_path.split("/")[-1]
 

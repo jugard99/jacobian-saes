@@ -4,9 +4,9 @@ from dataclasses import dataclass, field
 from typing import Any, Literal, Optional, cast
 
 import torch
-import wandb
 from datasets import Dataset, DatasetDict, IterableDataset, IterableDatasetDict
 
+import wandb
 from jacobian_saes import __version__
 
 DTYPE_MAP = {
@@ -82,8 +82,7 @@ class LanguageModelSAERunnerConfig:
         scale_sparsity_penalty_by_decoder_norm (bool): Whether to scale the sparsity penalty by the decoder norm.
         l1_warm_up_steps (int): The number of warm-up steps for the L1 loss.
         use_jacobian_loss (bool): Whether to use the Jacobian loss.
-        normalize_jac_loss (bool): Whether to normalize the Jacobian loss (if true then we're minimizing L1/L2, otherwise we're minimizing L1).
-        norm_jac_across_batch (bool): Whether to normalize the Jacobian loss across the batch (True) or for each token individually (False).
+        sparsity_metric (str): Custom sparsity metric to use.
         jacobian_coefficient (float): The coefficient for the Jacobian loss.
         jacboian_warm_up_steps (int): The number of warm-up steps for the Jacobian loss scheduler.
         mlp_out_mse_coefficient (float): The coefficient for the post-MLP reconstruction loss.
@@ -195,8 +194,7 @@ class LanguageModelSAERunnerConfig:
     scale_sparsity_penalty_by_decoder_norm: bool = False
     l1_warm_up_steps: int = 0
     use_jacobian_loss: bool = False
-    normalize_jac_loss: bool = False
-    norm_jac_across_batch: bool = False
+    sparsity_metric: str = "l1"
     jacobian_coefficient: float = 5e2
     jacobian_warm_up_steps: int = 0
     mlp_out_mse_coefficient: float = 1.0
@@ -279,18 +277,14 @@ class LanguageModelSAERunnerConfig:
                 jac = self.jacobian_coefficient
                 if int(jac) == jac:
                     jac = int(jac)
-                if self.normalize_jac_loss and jac > 0:
-                    jac = f"{jac}n"
-                    if self.norm_jac_across_batch:
-                        jac += "b"
-                    else:
-                        jac += "t"
+                if jac > 0:
+                    jac = f"{jac}{self.sparsity_metric}"
                 k = self.activation_fn_kwargs["k"]
                 model_name = self.model_name
                 if self.randomize_llm_weights:
                     model_name += "-randomized"
                 self.run_name = f"Layer{self.hook_layer}-{self.d_sae}-J{jac}-LR{self.lr:.1e}-k{k}-T{self.training_tokens:.1e}-{model_name}"
-            else:    
+            else:
                 self.run_name = f"{self.hook_name}-{self.d_sae}-L1-{self.l1_coefficient}-LR-{self.lr}-Tokens-{self.training_tokens:.1e}"
 
         if self.b_dec_init_method not in ["geometric_median", "mean", "zeros"]:
@@ -323,9 +317,11 @@ class LanguageModelSAERunnerConfig:
             raise ValueError(
                 f"normalize_activations must be none, expected_average_only_in, or constant_norm_rescale. Got {self.normalize_activations}"
             )
-        
+
         if self.normalize_activations != "none":
-            raise ValueError("normalize_activations must be none when training Jacobian SAEs")
+            raise ValueError(
+                "normalize_activations must be none when training Jacobian SAEs"
+            )
 
         if self.act_store_device == "with_model":
             self.act_store_device = self.device
@@ -341,9 +337,7 @@ class LanguageModelSAERunnerConfig:
         self.checkpoint_path = f"{self.checkpoint_path}/{unique_id}"
 
         if self.verbose:
-            print(
-                f"Run name: {self.run_name}"
-            )
+            print(f"Run name: {self.run_name}")
             # Print out some useful info:
             n_tokens_per_buffer = (
                 self.store_batch_size_prompts
@@ -435,8 +429,7 @@ class LanguageModelSAERunnerConfig:
             "l1_coefficient": self.l1_coefficient,
             "lp_norm": self.lp_norm,
             "use_jacobian_loss": self.use_jacobian_loss,
-            "normalize_jac_loss": self.normalize_jac_loss,
-            "norm_jac_across_batch": self.norm_jac_across_batch,
+            "sparsity_metric": self.sparsity_metric,
             "jacobian_coefficient": self.jacobian_coefficient,
             "jacobian_warm_up_steps": self.jacobian_warm_up_steps,
             "mlp_out_mse_coefficient": self.mlp_out_mse_coefficient,

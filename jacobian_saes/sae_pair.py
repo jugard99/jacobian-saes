@@ -60,8 +60,7 @@ class SAEPairConfig:
     randomize_llm_weights: bool = False
     activation_fn_kwargs: dict[str, Any] = field(default_factory=dict)
     is_pair: bool = False
-    normalize_jac_loss: bool = False
-    norm_jac_across_batch: bool = False
+    sparsity_metric: str = "l1"
     neuronpedia_id: Optional[str] = None
     model_from_pretrained_kwargs: dict[str, Any] = field(default_factory=dict)
     seqpos_slice: tuple[int | None, ...] = (None,)

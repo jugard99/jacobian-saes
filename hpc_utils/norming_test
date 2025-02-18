@@ -1,0 +1,36 @@
+#! /bin/sh
+cd ~/work/jacobian_saes
+
+./hpc_utils/train -q mlcnu -w jsae-norm-test
+./hpc_utils/train -q mlcnu -w jsae-norm-test --norm-jac-per-token
+./hpc_utils/train -q mlcnu -w jsae-norm-test --no-jac-normed
+./hpc_utils/train -q mlcnu -w jsae-norm-test -j 0
+
+
+# TODO: make this work on a 40gig A100 by reducing the eval batch size
+./hpc_utils/train --80g -w jsae-norm-test -m 410m -l 15 -e 64 -j 0.5
+./hpc_utils/train --80g -w jsae-norm-test -m 410m -l 15 -e 64 -j 0.5 --norm-jac-per-token
+./hpc_utils/train --80g -w jsae-norm-test -m 410m -l 15 -e 64 -j 0.5 --no-jac-normed
+./hpc_utils/train --80g -w jsae-norm-test -m 410m -l 15 -e 64 -j 0
+
+./hpc_utils/train --80g -w jsae-norm-test -m 1b -l 7 -j 0.25 \
+    --eval-batch-size 4 --eval-n-batches 20
+./hpc_utils/train --80g -w jsae-norm-test -m 1b -l 7 -j 0.25 \
+    --eval-batch-size 4 --eval-n-batches 20 --norm-jac-per-token
+./hpc_utils/train --80g -w jsae-norm-test -m 1b -l 7 -j 0.25 \
+    --eval-batch-size 4 --eval-n-batches 20 --no-jac-normed
+./hpc_utils/train --80g -w jsae-norm-test -m 1b -l 7 -j 0 \
+    --eval-batch-size 4 --eval-n-batches 20
+
+./hpc_utils/train --80g -w jsae-norm-test -m 6.9b -l 17 -j 0.125 \
+    --buffer-size 2 --store-batch-size 1 --eval-batch-size 1 --eval-n-batches 80 \
+    -b 2048 --accum 2 -c 512
+./hpc_utils/train --80g -w jsae-norm-test -m 6.9b -l 17 -j 0.125 \
+    --buffer-size 2 --store-batch-size 1 --eval-batch-size 1 --eval-n-batches 80 \
+    -b 2048 --accum 2 -c 512 --norm-jac-per-token
+./hpc_utils/train --80g -w jsae-norm-test -m 6.9b -l 17 -j 0.125 \
+    --buffer-size 2 --store-batch-size 1 --eval-batch-size 1 --eval-n-batches 80 \
+    -b 2048 --accum 2 -c 512 --no-jac-normed
+./hpc_utils/train --80g -w jsae-norm-test -m 6.9b -l 17 -j 0 \
+    --buffer-size 2 --store-batch-size 1 --eval-batch-size 1 --eval-n-batches 80 \
+    -b 2048 --accum 2 -c 512

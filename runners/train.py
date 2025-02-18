@@ -9,6 +9,29 @@ sys.path.append(parent_dir)
 import torch
 
 from jacobian_saes import LanguageModelSAERunnerConfig, SAETrainingRunner
+from jacobian_saes.training.sparsity_metrics import sparsity_metrics
+
+d_model_by_size = {
+    "70m": 512,
+    "160m": 768,
+    "410m": 1024,
+    "1b": 2048,
+    "1.4b": 2048,
+    "2.8b": 2560,
+    "6.9b": 4096,
+    "12b": 5120,
+}
+
+n_layers_by_size = {
+    "70m": 6,
+    "160m": 12,
+    "410m": 24,
+    "1b": 16,
+    "1.4b": 24,
+    "2.8b": 32,
+    "6.9b": 32,
+    "12b": 36,
+}
 
 parser = argparse.ArgumentParser(description="Train a Jacobian SAE")
 parser.add_argument(
@@ -51,19 +74,15 @@ parser.add_argument(
     type=str,
     default="70m",
     help="Pythia model size",
-    choices=["70m", "160m", "410m", "1b", "1.4b", "2.8b", "6.9b", "12b"],
+    choices=d_model_by_size.keys(),
 )
 parser.add_argument(
-    "--no-jac-normed",
-    action="store_false",
-    dest="normalize_jac_loss",
-    help="Normalize Jacobian by L2 norm",
-)
-parser.add_argument(
-    "--norm-jac-per-token",
-    action="store_false",
-    dest="norm_jac_across_batch",
-    help="Normalize Jacobian by L2 norm",
+    "--model-preset",
+    type=str,
+    help="Pythia model size; also sets other arguments (e.g. Jacobian coef). "
+    + "Can cause messy behavior when combined with other args; "
+    + "not recommended unless you've read the source code.",
+    choices=d_model_by_size.keys(),
 )
 parser.add_argument(
     "--out-mse-coef",
@@ -80,6 +99,14 @@ parser.add_argument(
     "--randomize-weights",
     action="store_true",
     help="Randomize the weights of the LLM",
+)
+parser.add_argument(
+    "-s",
+    "--sparsity-metric",
+    type=str,
+    choices=sparsity_metrics.keys(),
+    default="l1",
+    help="Jacobian sparsity metric",
 )
 parser.add_argument("--store-batch-size", type=int, default=16, help="Store batch size")
 parser.add_argument(
@@ -108,6 +135,44 @@ else:
 print("Using device:", device)
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
+if args.model_preset is not None:
+    if args.model_preset == "410m":
+        args.model_size = "410m"
+        if args.expansion_factor == 32:
+            args.expansion_factor = 64
+        if args.jacobian_coef == 1:
+            args.jacobian_coef = 0.5
+
+    elif args.model_preset == "1b":
+        args.model_size = "1b"
+        if args.jacobian_coef == 1:
+            args.jacobian_coef = 0.25
+        if args.eval_batch_size == 8:
+            args.eval_batch_size = 4
+        if args.eval_n_batches == 10:
+            args.eval_n_batches = 20
+
+    elif args.model_preset == "6.9b":
+        args.model_size = "6.9b"
+        if args.jacobian_coef == 1:
+            args.jacobian_coef = 0.125
+        if args.buffer_size == 32:
+            args.buffer_size = 2
+        if args.store_batch_size == 16:
+            args.store_batch_size = 1
+        if args.eval_batch_size == 8:
+            args.eval_batch_size = 1
+        if args.eval_n_batches == 10:
+            args.eval_n_batches = 80
+        if args.batch_size == 4096:
+            args.batch_size = 2048
+        if args.gradient_accumulation_steps == 1:
+            args.gradient_accumulation_steps = 2
+        if args.context_size == 2048:
+            args.context_size = 512
+
+    else:
+        raise ValueError(f"Model preset not yet supported: {args.model_preset}")
 
 total_training_tokens = int(args.tokens)
 batch_size = args.batch_size
@@ -118,27 +183,6 @@ lr_warm_up_steps = total_training_steps // 100  # 1% of training
 lr_decay_steps = total_training_steps // 5  # 20% of training
 jacobian_warm_up_steps = total_training_steps // 20  # 5% of training
 
-d_model_by_size = {
-    "70m": 512,
-    "160m": 768,
-    "410m": 1024,
-    "1b": 2048,
-    "1.4b": 2048,
-    "2.8b": 2560,
-    "6.9b": 4096,
-    "12b": 5120,
-}
-
-n_layers_by_size = {
-    "70m": 6,
-    "160m": 12,
-    "410m": 24,
-    "1b": 16,
-    "1.4b": 24,
-    "2.8b": 32,
-    "6.9b": 32,
-    "12b": 36,
-}
 assert (
     args.layer < n_layers_by_size[args.model_size]
 ), f"Layer {args.layer} does not exist in model size {args.model_size}"
@@ -173,8 +217,7 @@ cfg = LanguageModelSAERunnerConfig(
     gradient_accumulation_steps=args.gradient_accumulation_steps,
     l1_coefficient=0,  # we're using TopK so we don't need this
     use_jacobian_loss=True,
-    normalize_jac_loss=args.normalize_jac_loss,
-    norm_jac_across_batch=args.norm_jac_across_batch,
+    sparsity_metric=args.sparsity_metric,
     jacobian_coefficient=args.jacobian_coef,
     jacobian_warm_up_steps=jacobian_warm_up_steps,
     mlp_out_mse_coefficient=args.mlp_out_mse_coefficient,

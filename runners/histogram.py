@@ -77,7 +77,7 @@ if args.norm:
                 if pbar.n >= n_tokens_norm_est:
                     break
     mean_jac_norm = jac_norms_sum / pbar.n
-print("Mean Jacobian norm:", mean_jac_norm)
+    print("Mean Jacobian norm:", mean_jac_norm)
 
 # for the non-averaged histogram
 bins = 1500 if args.norm else 1100
