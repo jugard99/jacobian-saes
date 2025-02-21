@@ -141,16 +141,34 @@ if args.model_preset is not None:
         if args.expansion_factor == 32:
             args.expansion_factor = 64
         if args.jacobian_coef == 1:
+            # jac coeff should imo be 0.5 k^2 / d_model
             args.jacobian_coef = 0.5
+        if args.eval_batch_size == 8:
+            args.eval_batch_size = 4
+        if args.eval_n_batches == 10:
+            args.eval_n_batches = 20
 
     elif args.model_preset == "1b":
         args.model_size = "1b"
         if args.jacobian_coef == 1:
             args.jacobian_coef = 0.25
         if args.eval_batch_size == 8:
-            args.eval_batch_size = 4
+            args.eval_batch_size = 2
         if args.eval_n_batches == 10:
-            args.eval_n_batches = 20
+            args.eval_n_batches = 40
+
+    elif args.model_preset == "2.8b":
+        args.model_size = "2.8b"
+        if args.jacobian_coef == 1:
+            args.jacobian_coef = 0.2
+        if args.eval_batch_size == 8:
+            args.eval_batch_size = 2
+        if args.eval_n_batches == 10:
+            args.eval_n_batches = 40
+        if args.buffer_size == 32:
+            args.buffer_size = 8
+        if args.store_batch_size == 16:
+            args.store_batch_size = 8
 
     elif args.model_preset == "6.9b":
         args.model_size = "6.9b"
@@ -169,7 +187,7 @@ if args.model_preset is not None:
         if args.gradient_accumulation_steps == 1:
             args.gradient_accumulation_steps = 2
         if args.context_size == 2048:
-            args.context_size = 512
+            args.context_size = 256
 
     else:
         raise ValueError(f"Model preset not yet supported: {args.model_preset}")

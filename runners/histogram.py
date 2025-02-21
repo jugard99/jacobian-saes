@@ -11,6 +11,7 @@ from tqdm import tqdm
 parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(parent_dir)
 from jacobian_saes.utils import load_pretrained, run_sandwich
+from jacobian_saes.evals import jac_norms
 
 parser = argparse.ArgumentParser(
     description="Get histogram data of the Jacobian values"
@@ -20,8 +21,9 @@ parser.add_argument(
 )
 parser.add_argument(
     "--norm",
-    action="store_true",
-    help="Normalize the Jacobian before taking the histogram",
+    type=str,
+    choices=jac_norms.keys(),
+    help="Normalization for the Jacobian",
 )
 parser.add_argument(
     "--output-dir",
@@ -46,6 +48,8 @@ parser.add_argument(
 )
 args = parser.parse_args()
 
+assert args.norm is None or args.norm[-1] == "t", "Only Lp norms per-token are supported"
+
 n_tokens = int(args.tokens)
 
 sae_pair, model, mlp_with_grads, layer = load_pretrained(args.path)
@@ -53,7 +57,7 @@ k = sae_pair.cfg.activation_fn_kwargs["k"]
 
 dataset = load_dataset("allenai/c4", "en", split="validation", streaming=True)
 
-if args.norm:
+if args.norm is not None:
     n_tokens_norm_est = 100_000
     jac_norms_sum = 0
     # estimate the empirical mean norm of the Jacobians
@@ -71,7 +75,7 @@ if args.norm:
                     acts = acts[:, : args.context_size]
 
                 jacobian, _ = run_sandwich(sae_pair, mlp_with_grads, acts)
-                jac_norms_sum += jacobian.pow(2).mean(dim=(-2, -1)).sqrt().sum().item()
+                jac_norms_sum += jac_norms[args.norm](jacobian).sum().item()
 
                 pbar.update(acts.shape[1])
                 if pbar.n >= n_tokens_norm_est:
@@ -149,5 +153,5 @@ output_dir = os.path.join(script_dir, args.output_dir)
 
 if not os.path.exists(output_dir):
     os.makedirs(output_dir)
-output_path = os.path.join(output_dir, f"{args.path.split("/")[-1]}{'_normed' if args.norm else ''}.safetensor")
+output_path = os.path.join(output_dir, f"{args.path.split("/")[-1]}{f'_normed{args.norm}' if args.norm else ''}.safetensor")
 save_file(tensors_dict, output_path, metadata=metadata)
