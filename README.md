@@ -1,13 +1,13 @@
 # Jacobian SAEs
-The goal of this paper is to create something similar to SAEs but which optimizes for _sparsity of computation_ rather than merely sparsity of internal representations.
-
-This is an ongoing project and is still under development; I'll write a more comprehensive readme once the paper is ready for publication (likely around the ICML deadline).
-
-## Credit
-The code base started off as a fork of the excellent [**SAELens**](https://github.com/jbloomAus/SAELens/tree/main), and a lot of credit goes to them for giving me such a great starting point.
+The is the codebase for the paper **Jacobian Sparse Autoencoders: Sparsify Computations, Not Just Activations**.
+The goal of this paper is to create something similar to SAEs but which optimizes for _sparsity of computation_ (i.e. minimizing the number of edges in the computational graph) rather than merely sparsity of internal representations.
 
 ## How to run it
 The top-level runner is `runners/train.py`.
+A high-level demo of using JSAEs is in `notebooks/basic_usage_demo.ipynb`.
+
+## Credit
+The code base started off as a fork of the excellent [**SAELens**](https://github.com/jbloomAus/SAELens/tree/main), and a lot of credit goes to them for giving me such a great starting point.
 
 ### If you're an internal collaborator at the University of Bristol
 There are some bash scripts in `hpc_utils` that you might find useful
