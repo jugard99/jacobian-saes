@@ -21,7 +21,7 @@ parser.add_argument(
     "--norm",
     type=str,
     choices=jac_norms.keys(),
-    help="Normalization for the Jacobian",
+    help="Normalization for the Jacobian (for taking the 'number above threshold' metric)",
 )
 parser.add_argument(
     "--output-dir",
@@ -81,7 +81,7 @@ def safe_division(numerator, denominator, eps=1e-8):
 
 jac_abs_above_thresh = 0.0
 jac_kurtosis = 0.0
-norm_vals = {name: 0.0 for name in jac_norms.keys() if "t" in name}
+norm_vals = {name: [] for name in jac_norms.keys() if "t" in name}
 ce_scores = []
 ce_scores2 = []
 kl_scores = []
@@ -101,8 +101,7 @@ with torch.no_grad():
             for name, norm_fn in jac_norms.items():
                 if "t" not in name:
                     continue
-                norm_val = norm_fn(jacobian)
-                norm_vals[name] += norm_val.sum().item()
+                norm_vals[name].append(norm_fn(jacobian).flatten())
 
             if args.norm is not None:
                 jacobian = jacobian / jac_norms[args.norm](jacobian)
@@ -171,12 +170,14 @@ tensors_dict = {
     "ce_scores2": torch.cat(ce_scores2),
     "kl_scores": torch.cat(kl_scores),
     "kl_scores2": torch.cat(kl_scores2),
+    **{name: torch.cat(vals) for name, vals in norm_vals.items()},
 }
 metadata = {
     "mean_ce_score": get_mean(ce_scores),
     "mean_ce_score2": get_mean(ce_scores2),
     "mean_kl_score": get_mean(kl_scores),
     "mean_kl_score2": get_mean(kl_scores2),
+    **{f"mean_{name}": get_mean(vals) for name, vals in norm_vals.items()},
     "path": args.path,
     "tokens": str(n_tokens),
 }
