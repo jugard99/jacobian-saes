@@ -14,6 +14,7 @@ from jacobian_saes.training.sparsity_metrics import sparsity_metrics
 d_model_by_size = {
     "70m": 512,
     "160m": 768,
+    "gpt2-small": 768,
     "410m": 1024,
     "1b": 2048,
     "1.4b": 2048,
@@ -25,6 +26,7 @@ d_model_by_size = {
 n_layers_by_size = {
     "70m": 6,
     "160m": 12,
+    "gpt2-small": 12,
     "410m": 24,
     "1b": 16,
     "1.4b": 24,
@@ -192,6 +194,20 @@ if args.model_preset is not None:
     else:
         raise ValueError(f"Model preset not yet supported: {args.model_preset}")
 
+model_name = (
+    "gpt2-small"
+    if args.model_size == "gpt2-small"
+    else f"pythia-{args.model_size}-deduped"
+)
+
+dataset_path = "apollo-research/monology-pile-uncopyrighted-tokenizer-" + (
+    "gpt2" if args.model_size == "gpt2-small" else "EleutherAI-gpt-neox-20b"
+)
+
+if args.model_preset == "gpt2-small" and args.context_size > 1024:
+    args.context_size = 1024
+
+
 total_training_tokens = int(args.tokens)
 batch_size = args.batch_size
 total_training_steps = math.ceil(total_training_tokens / batch_size)
@@ -208,14 +224,14 @@ assert (
 cfg = LanguageModelSAERunnerConfig(
     # Data Generating Function (Model + Training Distibuion)
     # model options here: https://neelnanda-io.github.io/TransformerLens/generated/model_properties_table.html
-    model_name=f"pythia-{args.model_size}-deduped",
+    model_name=model_name,
     randomize_llm_weights=args.randomize_weights,
     hook_name=f"blocks.{args.layer}.ln2.hook_normalized",
     hook_layer=args.layer,
     d_in=d_model_by_size[args.model_size],
     activation_fn="topk",
     activation_fn_kwargs={"k": args.k},
-    dataset_path="apollo-research/monology-pile-uncopyrighted-tokenizer-EleutherAI-gpt-neox-20b",
+    dataset_path=dataset_path,
     streaming=True,
     # SAE Parameters
     expansion_factor=args.expansion_factor,
