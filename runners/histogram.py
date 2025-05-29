@@ -1,4 +1,5 @@
 import argparse
+import itertools
 import math
 import os
 import sys
@@ -10,8 +11,8 @@ from tqdm import tqdm
 
 parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(parent_dir)
-from jacobian_saes.utils import load_pretrained, run_sandwich
 from jacobian_saes.evals import jac_norms
+from jacobian_saes.utils import load_pretrained, run_sandwich
 
 parser = argparse.ArgumentParser(
     description="Get histogram data of the Jacobian values"
@@ -48,7 +49,9 @@ parser.add_argument(
 )
 args = parser.parse_args()
 
-assert args.norm is None or args.norm[-1] == "t", "Only Lp norms per-token are supported"
+assert (
+    args.norm is None or args.norm[-1] == "t"
+), "Only Lp norms per-token are supported"
 
 n_tokens = int(args.tokens)
 
@@ -92,9 +95,10 @@ bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
 hist = torch.zeros(bins, device=sae_pair.cfg.device)
 
 # for the averaged histogram
-summed_abs_jacobians = torch.zeros(
-    sae_pair.cfg.d_sae, sae_pair.cfg.d_sae, device=sae_pair.device
-)
+d_sae = sae_pair.cfg.d_sae
+k = sae_pair.cfg.activation_fn_kwargs["k"]
+running_avg_abs_jac = torch.zeros(d_sae, d_sae, device=sae_pair.device)
+output_n_actived = torch.zeros(d_sae, 1, dtype=torch.int, device=sae_pair.device)
 
 with torch.no_grad():
     with tqdm(total=n_tokens) as pbar:
@@ -115,17 +119,40 @@ with torch.no_grad():
             if args.norm:
                 jacobian /= mean_jac_norm
 
-            hist += torch.histc(jacobian.abs().flatten(), bins=bins, min=min_val, max=max_val)
+            hist += torch.histc(
+                jacobian.abs().flatten(), bins=bins, min=min_val, max=max_val
+            )
 
-            topk1 = acts_dict["topk_indices1"].unsqueeze(-1)
-            topk2 = acts_dict["topk_indices2"].unsqueeze(-2)
-            summed_abs_jacobians[topk2, topk1] += jacobian.abs().sum(dim=(0, 1))
+            topk1 = acts_dict["topk_indices1"].unsqueeze(-2).expand(-1, -1, k, -1)
+            topk2 = acts_dict["topk_indices2"].unsqueeze(-1).expand(-1, -1, -1, k)
+
+            # using the formula avg_new = avg_old * (n_old / n_new) + new_val / n_new
+            # count the number of times an output latent was active
+            output_n_actived_update = (
+                acts_dict["topk_indices2"]
+                .flatten()
+                .bincount(minlength=d_sae)
+                .unsqueeze(-1)
+            )
+            output_n_actived_new = output_n_actived + output_n_actived_update
+            output_n_actived_no_zeros = output_n_actived_new.clamp(min=1)
+            running_avg_abs_jac.mul_(output_n_actived).div_(output_n_actived_no_zeros)
+            output_n_actived = output_n_actived_new
+            # sum up the absolute values while putting them in the d_sae x d_sae matrix
+            running_avg_update = torch.index_put(
+                torch.zeros_like(running_avg_abs_jac, device=jacobian.device),
+                (topk2.flatten(), topk1.flatten()),
+                jacobian.abs().flatten(),
+                accumulate=True,
+            ) / output_n_actived_no_zeros
+            running_avg_abs_jac.add_(running_avg_update)
 
             pbar.update(acts.shape[1])
             if pbar.n >= n_tokens:
                 break
 
-mean_abs_jacobian_flat = (summed_abs_jacobians / pbar.n).flatten()
+# avoid division by zero
+mean_abs_jacobian_flat = running_avg_abs_jac.flatten()
 mean_jac_hist = torch.zeros(bins, device=sae_pair.cfg.device)
 batch_size = 1_048_576
 for i in range(math.ceil(mean_abs_jacobian_flat.shape[0] / batch_size)):
@@ -141,6 +168,7 @@ tensors_dict = {
     "mean_jac_hist": mean_jac_hist,
     "bin_edges": bin_edges,
     "bin_centers": bin_centers,
+    "output_n_actived": output_n_actived,
 }
 metadata = {
     "context_size": str(args.context_size),
@@ -153,5 +181,8 @@ output_dir = os.path.join(script_dir, args.output_dir)
 
 if not os.path.exists(output_dir):
     os.makedirs(output_dir)
-output_path = os.path.join(output_dir, f"{args.path.split("/")[-1]}{f'_normed{args.norm}' if args.norm else ''}.safetensor")
+output_path = os.path.join(
+    output_dir,
+    f"{args.path.split("/")[-1]}{f'_normed{args.norm}' if args.norm else ''}.safetensor",
+)
 save_file(tensors_dict, output_path, metadata=metadata)
