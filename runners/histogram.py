@@ -97,12 +97,17 @@ hist = torch.zeros(bins, device=sae_pair.cfg.device)
 # for the averaged histogram
 d_sae = sae_pair.cfg.d_sae
 k = sae_pair.cfg.activation_fn_kwargs["k"]
-running_avg_abs_jac = torch.zeros(d_sae, d_sae, device=sae_pair.device)
-output_n_actived = torch.zeros(d_sae, 1, dtype=torch.int, device=sae_pair.device)
+sum_abs_jac = torch.zeros(
+    d_sae,
+    d_sae,
+    dtype=(torch.float64 if sae_pair.device.type == "cuda" else torch.float32),
+    device=sae_pair.device,
+)
+count_jac = torch.zeros(d_sae, dtype=torch.int, device=sae_pair.device)
 
 with torch.no_grad():
     with tqdm(total=n_tokens) as pbar:
-        for item in dataset:
+        for i, item in enumerate(dataset):
             # Todo batching (if I have the time)
             _, cache = model.run_with_cache(
                 item["text"],
@@ -128,38 +133,34 @@ with torch.no_grad():
 
             # using the formula avg_new = avg_old * (n_old / n_new) + new_val / n_new
             # count the number of times an output latent was active
-            output_n_actived_update = (
-                acts_dict["topk_indices2"]
-                .flatten()
-                .bincount(minlength=d_sae)
-                .unsqueeze(-1)
-            )
-            output_n_actived_new = output_n_actived + output_n_actived_update
-            output_n_actived_no_zeros = output_n_actived_new.clamp(min=1)
-            running_avg_abs_jac.mul_(output_n_actived).div_(output_n_actived_no_zeros)
-            output_n_actived = output_n_actived_new
+            count_jac.add_(acts_dict["topk_indices2"].flatten().bincount(minlength=d_sae))
             # sum up the absolute values while putting them in the d_sae x d_sae matrix
-            running_avg_update = torch.index_put(
-                torch.zeros_like(running_avg_abs_jac, device=jacobian.device),
+            sum_abs_jac.index_put_(
                 (topk2.flatten(), topk1.flatten()),
-                jacobian.abs().flatten(),
+                jacobian.abs().flatten().to(sum_abs_jac.dtype),
                 accumulate=True,
-            ) / output_n_actived_no_zeros
-            running_avg_abs_jac.add_(running_avg_update)
+            )
+
+            if i % 20 == 0:
+                assert not sum_abs_jac.isinf().any() and not sum_abs_jac.isnan().any(), (
+                    "There are inf or nan values in the Jacobian sum"
+                )
+                tqdm.write(f"Count: {count_jac.sum()}, Sum: {sum_abs_jac.sum()}\n\n")
 
             pbar.update(acts.shape[1])
             if pbar.n >= n_tokens:
                 break
 
 # avoid division by zero
-mean_abs_jacobian_flat = running_avg_abs_jac.flatten()
+mean_abs_jac = sum_abs_jac / count_jac.clamp(min=1).unsqueeze(-1)
+mean_abs_jac_flat = mean_abs_jac.flatten()
 mean_jac_hist = torch.zeros(bins, device=sae_pair.cfg.device)
 batch_size = 1_048_576
-for i in range(math.ceil(mean_abs_jacobian_flat.shape[0] / batch_size)):
-    if (i + 1) * batch_size < mean_abs_jacobian_flat.shape[0]:
-        sliced_jac = mean_abs_jacobian_flat[i * batch_size : (i + 1) * batch_size]
+for i in range(math.ceil(mean_abs_jac_flat.shape[0] / batch_size)):
+    if (i + 1) * batch_size < mean_abs_jac_flat.shape[0]:
+        sliced_jac = mean_abs_jac_flat[i * batch_size : (i + 1) * batch_size]
     else:
-        sliced_jac = mean_abs_jacobian_flat[i * batch_size :]
+        sliced_jac = mean_abs_jac_flat[i * batch_size :]
 
     mean_jac_hist += torch.histc(sliced_jac, bins=bins, min=min_val, max=max_val)
 
@@ -168,7 +169,7 @@ tensors_dict = {
     "mean_jac_hist": mean_jac_hist,
     "bin_edges": bin_edges,
     "bin_centers": bin_centers,
-    "output_n_actived": output_n_actived,
+    "count_jac": count_jac,
 }
 metadata = {
     "context_size": str(args.context_size),
