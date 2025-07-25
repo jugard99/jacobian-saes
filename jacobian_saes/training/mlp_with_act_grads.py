@@ -4,7 +4,7 @@ from torch import nn
 from transformer_lens.components.mlps.mlp import MLP as TransformerLensMLP
 from transformer_lens.utilities.addmm import batch_addmm
 
-
+#Those who know
 class MLPWithActGrads(TransformerLensMLP):
     """
     A clone of the MLP in the LLM which also returns the gradients
