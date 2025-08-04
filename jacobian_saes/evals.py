@@ -396,9 +396,9 @@ def get_featurewise_weight_based_metrics(
     )
 
     return {
-        f"encoder_bias{"2" if is_output_sae else ""}": encoder_bias,
-        f"encoder_norm{"2" if is_output_sae else ""}": encoder_norms,
-        f"encoder_decoder_cosine_sim{"2" if is_output_sae else ""}": encoder_decoder_cosine_sim,
+        f"encoder_bias{'2' if is_output_sae else ''}": encoder_bias,
+        f"encoder_norm{'2' if is_output_sae else ''}": encoder_norms,
+        f"encoder_decoder_cosine_sim{'2' if is_output_sae else ''}": encoder_decoder_cosine_sim,
     }
 
 

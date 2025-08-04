@@ -474,7 +474,7 @@ class TrainingSAEPair(SAEPair):
             # Run the reconstructed activations through the MLP
             # mlp_out, mlp_act_grads = self.mlp(self.pre_mlp_ln(sae_out))
             mlp_out, mlp_act_grads = self.mlp(sae_in)
-            # Replace with second hook (in our case, hook_z)
+            # Replace with second hook (in our case, hook_z). So change utils function to get the hook of any hook etc.
             sae_out2, feature_acts2, topk_indices2, _mse_loss2, l1_loss2 = (
                 self.apply_sae(mlp_out, True, current_l1_coefficient)
             )
