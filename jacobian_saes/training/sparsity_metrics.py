@@ -4,7 +4,7 @@ import torch
 from einops import rearrange
 from jaxtyping import Array, Float
 
-type Jacobian = Float[Array, "batch seq_pos k2 k1"]
+Jacobian = Float[Array, "batch seq_pos k2 k1"]
 
 
 def l1(x: Jacobian):
