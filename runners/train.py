@@ -226,9 +226,11 @@ cfg = LanguageModelSAERunnerConfig(
     # model options here: https://neelnanda-io.github.io/TransformerLens/generated/model_properties_table.html
     model_name=model_name,
     randomize_llm_weights=args.randomize_weights,
-    hook_name=f"blocks.{args.layer}.ln2.hook_normalized",
+    hook_name=f"blocks.{args.layer}.attn.hook_q",
     hook_layer=args.layer,
-    d_in=d_model_by_size[args.model_size],
+    hook_head_index=4,
+    # d_in=d_model_by_size[args.model_size],
+    d_in = 64,
     activation_fn="topk",
     activation_fn_kwargs={"k": args.k},
     dataset_path=dataset_path,

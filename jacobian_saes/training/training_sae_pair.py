@@ -11,9 +11,11 @@ from typing import Any, Literal, Optional, overload
 import einops
 import torch
 from jaxtyping import Float, Int
+from sympy import false
 from torch import nn
 from transformer_lens.components.transformer_block import TransformerBlock
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens import HookedTransformer
 
 from jacobian_saes.config import LanguageModelSAERunnerConfig
 from jacobian_saes.sae_pair import SAEPair, SAEPairConfig
@@ -473,16 +475,17 @@ class TrainingSAEPair(SAEPair):
         elif self.cfg.use_jacobian_loss:
             # Run the reconstructed activations through the MLP
             # mlp_out, mlp_act_grads = self.mlp(self.pre_mlp_ln(sae_out))
-            mlp_out, mlp_act_grads = self.mlp(sae_in)
+            # mlp_out, mlp_act_grads = self.mlp(sae_in)
             # Replace with second hook (in our case, hook_z). So change utils function to get the hook of any hook etc.
             # head_out = head_utils.get_head(self.cfg.model_name,"blocks.0.attn.hook_z")
+            head_out,jacobian = self.get_head_elements(sae_in)
             sae_out2, feature_acts2, topk_indices2, _mse_loss2, l1_loss2 = (
-                self.apply_sae(mlp_out, True, current_l1_coefficient)
+                self.apply_sae(head_out, True, current_l1_coefficient)
             )
 
             # Calculate the Jacobian
             # Change to new jacobian calculation (based on tokens because yeah)
-            wd1 = self.get_W_dec(False) @ self.mlp.W_in  # (d_sae, d_mlp)
+            """wd1 = self.get_W_dec(False) @ self.mlp.W_in  # (d_sae, d_mlp)
             w2e = self.mlp.W_out @ self.get_W_enc(True)  # (d_mlp, d_sae)
             jacobian = einops.einsum(
                 wd1[topk_indices],
@@ -490,7 +493,7 @@ class TrainingSAEPair(SAEPair):
                 w2e[:, topk_indices2],
                 "... seq_pos k1 d_mlp, ... seq_pos d_mlp,"
                 "d_mlp ... seq_pos k2 -> ... seq_pos k2 k1",
-            )
+            )"""
 
 
 
@@ -512,7 +515,7 @@ class TrainingSAEPair(SAEPair):
             aux_reconstruction_loss = torch.tensor(0.0)
         else:
             jacobian_loss = torch.tensor(0.0)
-            mlp_out = torch.tensor(0.0)
+            head_out = torch.tensor(0.0)
             sae_out2 = torch.tensor(0.0)
             feature_acts2 = torch.tensor(0.0)
             mse_loss2 = torch.tensor(0.0)
@@ -525,7 +528,7 @@ class TrainingSAEPair(SAEPair):
             sae_out=sae_out,
             feature_acts=feature_acts,
             # Replace with second hook
-            sae_in2=mlp_out,
+            sae_in2=head_out,
             sae_out2=sae_out2,
             feature_acts2=feature_acts2,
             loss=loss,
@@ -541,6 +544,40 @@ class TrainingSAEPair(SAEPair):
             mse_loss2=mse_loss2.item(),
             l1_loss2=l1_loss2.item(),
         )
+
+    def get_head_elements(
+            self, E:torch.Tensor):
+        model_name = self.cfg.model_name
+        model = HookedTransformer.from_pretrained(model_name)
+        # Get query, key and value matrices
+        W_Q = model.W_Q[self.cfg.hook_layer][self.cfg.hook_head_index]
+        W_K = model.W_K[self.cfg.hook_layer][self.cfg.hook_head_index]
+        W_V = model.W_V[self.cfg.hook_layer][self.cfg.hook_head_index]
+        # Get K and V values
+        K = E @ W_K
+        V = E @ W_V
+        q = E @ W_Q
+        # Now do einsum for attention pattern
+        S = einops.einsum(q,K,"d_h,l d_h->l")
+        # Softmax and jacobian of softmax
+        A = torch.softmax(S,dim=-1)
+        jacA = torch.diag(A) - A.unsqueeze(1) * A
+
+        W_dec = self.get_W_dec(False)
+        W_enc = self.get_W_enc(True)
+
+        wd1 = W_dec @ V.T
+        w2e = K @ W_enc
+
+        J = einops.einsum(
+            wd1, jacA, w2e,
+            "d_s1 seq,seq seq2,seq2 d_s2-> d_s1 d_s2"
+        )
+
+        z = einops.einsum(A, V, "l,l d_h->d_h")
+
+        return z,J
+
 
     def apply_sae(
         self, sae_in: torch.Tensor, is_output_sae: bool, current_l1_coefficient: float

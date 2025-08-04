@@ -35,7 +35,6 @@ def get_W_E(
             tokens = model.to_tokens(tokens)
         else:
             tokens = torch.tensor(tokens).unsqueeze(0)
-        _, cache = model.run_with_cache(tokens, names_filter=lambda name: hook in name)
-        hooked = cache[hook][:,:,headindex,:]
-        yield hooked
+        E = model.W_E[tokens]
+        yield E
 
