@@ -23,7 +23,7 @@ from jacobian_saes.toolkit.pretrained_sae_loaders import (
 )
 from jacobian_saes.training.mlp_with_act_grads import MLPWithActGrads
 from jacobian_saes.training.sparsity_metrics import sparsity_metrics
-from jacobian_saes import utils
+from jacobian_saes.training import head_utils
 
 SPARSITY_PATH = "sparsity.safetensors"
 SAE_WEIGHTS_PATH = "sae_weights.safetensors"
@@ -491,7 +491,7 @@ class TrainingSAEPair(SAEPair):
                 "d_mlp ... seq_pos k2 -> ... seq_pos k2 k1",
             )
             # Debug to see if my utils thing works lol
-            heads = utils.get_head_hooks(model_name=self.cfg.model_name,hook1="blocks.0.attn.hook_k",hook2="blocks.0.attn.hook_z",headindex=3)
+            heads = head_utils.get_head_hooks(model_name=self.cfg.model_name,hook1="blocks.0.attn.hook_k",hook2="blocks.0.attn.hook_z",headindex=3)
 
             _jacobian_loss = sparsity_metrics[self.cfg.sparsity_metric](jacobian)
             jacobian_loss = current_jacobian_coefficient * _jacobian_loss
