@@ -13,7 +13,7 @@ from jacobian_saes.sae_pair import SAEPair
 from jacobian_saes.training.training_sae_pair import TrainingSAEPair
 from jacobian_saes.training.mlp_with_act_grads import MLPWithActGrads
 from jacobian_saes.sae_training_runner import RANDOMIZED_LLM_WEIGHTS_PATH
-
+from jacobian_saes.training.activations_store import ActivationsStore
 api = wandb.Api()
 default_device = (
     "cuda"
@@ -25,15 +25,14 @@ default_prompt = "Given the existence as uttered forth in the public works of Pu
 
 
 def load_pretrained(
-    wandb_artifact_path: str, device: str = default_device,
-    use_training_class: bool = False,
+        wandb_artifact_path: str, device: str = default_device,
+        use_training_class: bool = False,
 ) -> tuple[SAEPair, HookedTransformer, MLPWithActGrads, int]:
     local_path = os.path.join("artifacts/", wandb_artifact_path.split("/")[-1])
 
     if not os.path.exists(local_path):
         artifact = api.artifact(wandb_artifact_path)
         artifact.download()
-
 
     sae_pair = SAEPair.load_from_pretrained(local_path, device=device)
     if getattr(sae_pair.cfg, "randomize_llm_weights", False):
@@ -63,11 +62,11 @@ def load_pretrained(
 
 
 def get_jacobian(
-    sae_pair: SAEPair,
-    mlp: CanBeUsedAsMLP,
-    topk_indices: torch.Tensor,
-    mlp_act_grads: torch.Tensor,
-    topk_indices2: torch.Tensor,
+        sae_pair: SAEPair,
+        mlp: CanBeUsedAsMLP,
+        topk_indices: torch.Tensor,
+        mlp_act_grads: torch.Tensor,
+        topk_indices2: torch.Tensor,
 ) -> torch.Tensor:
     wd1 = sae_pair.get_W_dec(False) @ mlp.W_in
     w2e = mlp.W_out @ sae_pair.get_W_enc(True)
@@ -85,10 +84,10 @@ def get_jacobian(
 
 
 def run_sandwich(
-    sae_pair: SAEPair,
-    mlp_with_act_grads: MLPWithActGrads,
-    ln_out_act: torch.Tensor,
-    use_recontr_mlp_input: bool = False,
+        sae_pair: SAEPair,
+        mlp_with_act_grads: MLPWithActGrads,
+        ln_out_act: torch.Tensor,
+        use_recontr_mlp_input: bool = False,
 ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
     sae_acts1, topk_indices1 = sae_pair.encode(
         ln_out_act, False, return_topk_indices=True
@@ -114,3 +113,27 @@ def run_sandwich(
     }
 
     return jacobian, acts_dict
+
+
+def get_head_hooks(
+        model_name: str,
+        hook1: str,
+        hook2: str,
+        headindex: int
+):
+    # Gets requested hooks based on params
+    tokengen = ActivationsStore._iterate_raw_dataset_tokens()
+    model = HookedTransformer.from_pretrained(model_name)
+    for tokens in tokengen:
+        if isinstance(tokens,str):
+            tokens = model.to_tokens(tokens)
+        elif isinstance(tokens[0],str):
+            tokens = "".join(tokens)
+            tokens = model.to_tokens(tokens)
+        else:
+            tokens = torch.tensor(tokens).unsqueeze(0)
+        _, cache = model.run_with_cache(tokens, names_filter=lambda name: hook1 in name or hook2 in name)
+        K = cache[hook1][:,:,headindex,:]
+        V = cache[hook2][:,:,headindex,:]
+        yield K, V
+

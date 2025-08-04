@@ -72,6 +72,7 @@ class SAETrainingRunner:
         )
 
         # If we're using the Jacobian loss, make sure the hook point makes sense
+        # Shouldn't matter so remove this
         if self.cfg.use_jacobian_loss:
             assert (
                 "ln2.hook_normalized" in self.cfg.hook_name

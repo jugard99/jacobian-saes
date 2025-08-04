@@ -23,6 +23,7 @@ from jacobian_saes.toolkit.pretrained_sae_loaders import (
 )
 from jacobian_saes.training.mlp_with_act_grads import MLPWithActGrads
 from jacobian_saes.training.sparsity_metrics import sparsity_metrics
+from jacobian_saes import utils
 
 SPARSITY_PATH = "sparsity.safetensors"
 SAE_WEIGHTS_PATH = "sae_weights.safetensors"
@@ -233,6 +234,7 @@ class TrainingSAEPair(SAEPair):
             assert (
                 cfg.architecture == "standard"
             ), "Jacobian loss is currently only supported with standard SAEs"
+            # Topk not necessary probably
             assert (
                 cfg.activation_fn_str == "topk"
             ), "Jacobian loss is currently only supported with topk due to efficiency concerns"
@@ -472,11 +474,13 @@ class TrainingSAEPair(SAEPair):
             # Run the reconstructed activations through the MLP
             # mlp_out, mlp_act_grads = self.mlp(self.pre_mlp_ln(sae_out))
             mlp_out, mlp_act_grads = self.mlp(sae_in)
+            # Replace with second hook (in our case, hook_z)
             sae_out2, feature_acts2, topk_indices2, _mse_loss2, l1_loss2 = (
                 self.apply_sae(mlp_out, True, current_l1_coefficient)
             )
 
             # Calculate the Jacobian
+            # Change to new jacobian calculation (based on tokens because yeah)
             wd1 = self.get_W_dec(False) @ self.mlp.W_in  # (d_sae, d_mlp)
             w2e = self.mlp.W_out @ self.get_W_enc(True)  # (d_mlp, d_sae)
             jacobian = einops.einsum(
@@ -486,10 +490,12 @@ class TrainingSAEPair(SAEPair):
                 "... seq_pos k1 d_mlp, ... seq_pos d_mlp,"
                 "d_mlp ... seq_pos k2 -> ... seq_pos k2 k1",
             )
+            # Debug to see if my utils thing works lol
+            heads = utils.get_head_hooks(model_name=self.cfg.model_name,hook1="blocks.0.attn.hook_k",hook2="blocks.0.attn.hook_z",headindex=3)
 
             _jacobian_loss = sparsity_metrics[self.cfg.sparsity_metric](jacobian)
             jacobian_loss = current_jacobian_coefficient * _jacobian_loss
-            
+            # Don't think I have to change this lol
             mse_loss2 = self.cfg.mlp_out_mse_coefficient * _mse_loss2
 
             loss = (
@@ -517,6 +523,7 @@ class TrainingSAEPair(SAEPair):
             sae_in=sae_in,
             sae_out=sae_out,
             feature_acts=feature_acts,
+            # Replace with second hook
             sae_in2=mlp_out,
             sae_out2=sae_out2,
             feature_acts2=feature_acts2,
