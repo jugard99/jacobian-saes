@@ -492,7 +492,7 @@ class TrainingSAEPair(SAEPair):
             )
             # Debug to see if my utils thing works lol
             heads = head_utils.get_head_hooks(model_name=self.cfg.model_name,hook1="blocks.0.attn.hook_k",hook2="blocks.0.attn.hook_z",headindex=3)
-
+            print(heads)
             _jacobian_loss = sparsity_metrics[self.cfg.sparsity_metric](jacobian)
             jacobian_loss = current_jacobian_coefficient * _jacobian_loss
             # Don't think I have to change this lol
