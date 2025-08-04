@@ -475,6 +475,7 @@ class TrainingSAEPair(SAEPair):
             # mlp_out, mlp_act_grads = self.mlp(self.pre_mlp_ln(sae_out))
             mlp_out, mlp_act_grads = self.mlp(sae_in)
             # Replace with second hook (in our case, hook_z). So change utils function to get the hook of any hook etc.
+            # head_out = head_utils.get_head(self.cfg.model_name,"blocks.0.attn.hook_z")
             sae_out2, feature_acts2, topk_indices2, _mse_loss2, l1_loss2 = (
                 self.apply_sae(mlp_out, True, current_l1_coefficient)
             )
@@ -490,9 +491,9 @@ class TrainingSAEPair(SAEPair):
                 "... seq_pos k1 d_mlp, ... seq_pos d_mlp,"
                 "d_mlp ... seq_pos k2 -> ... seq_pos k2 k1",
             )
-            # Debug to see if my utils thing works lol
-            heads = head_utils.get_head_hooks(model_name=self.cfg.model_name,hook1="blocks.0.attn.hook_k",hook2="blocks.0.attn.hook_z",headindex=3)
-            print(heads)
+
+
+
             _jacobian_loss = sparsity_metrics[self.cfg.sparsity_metric](jacobian)
             jacobian_loss = current_jacobian_coefficient * _jacobian_loss
             # Don't think I have to change this lol
