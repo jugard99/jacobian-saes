@@ -473,7 +473,7 @@ class ActivationsStore:
 
         stacked_activations = torch.zeros((n_batches, n_context, 1, self.d_in))
 
-        if self.hook_head_index is not None:
+        if self.hook_head_index is  not None:
             stacked_activations[:, :, 0] = layerwise_activations[
                 :, :, self.hook_head_index
             ]

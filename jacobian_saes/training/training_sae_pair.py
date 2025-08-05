@@ -422,7 +422,7 @@ class TrainingSAEPair(SAEPair):
         dead_neuron_mask: Optional[torch.Tensor] = None,
         dead_neuron_mask2: Optional[torch.Tensor] = None,
     ) -> TrainStepOutput:
-        q,z,ctx = self.attn_with_activation_grads(sae_in)
+        q,z,ctx = self.attn_with_act_grads(sae_in)
         sae_in = q
         sae_out, feature_acts, topk_indices, mse_loss, l1_loss = self.apply_sae(
             sae_in, False, current_l1_coefficient
