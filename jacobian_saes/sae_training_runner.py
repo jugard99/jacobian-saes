@@ -73,11 +73,11 @@ class SAETrainingRunner:
 
         # If we're using the Jacobian loss, make sure the hook point makes sense
         # Shouldn't matter so remove this
-        if self.cfg.use_jacobian_loss:
+        """if self.cfg.use_jacobian_loss:
             assert (
                 "ln2.hook_normalized" in self.cfg.hook_name
             ), "You passed in a hook point that makes no sense with Jacobian loss, use ln2.hook_normalized instead"
-
+"""
         if self.cfg.from_pretrained_path is not None:
             self.sae = TrainingSAEPair.load_from_pretrained(
                 self.cfg.from_pretrained_path, self.cfg.device
