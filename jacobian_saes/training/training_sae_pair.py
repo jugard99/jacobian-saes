@@ -26,7 +26,6 @@ from jacobian_saes.toolkit.pretrained_sae_loaders import (
 from jacobian_saes.training.mlp_with_act_grads import MLPWithActGrads
 from jacobian_saes.training.sparsity_metrics import sparsity_metrics
 from jacobian_saes.training import head_utils
-from notebooks.basic_usage_demo import topk_indices
 
 SPARSITY_PATH = "sparsity.safetensors"
 SAE_WEIGHTS_PATH = "sae_weights.safetensors"
