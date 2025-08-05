@@ -549,10 +549,10 @@ class TrainingSAEPair(SAEPair):
             self, E:torch.Tensor):
         model_name = self.cfg.model_name
         model = HookedTransformer.from_pretrained(model_name)
-        # Get query, key and value matrices
-        W_Q = model.W_Q[self.cfg.hook_layer][self.cfg.hook_head_index]
-        W_K = model.W_K[self.cfg.hook_layer][self.cfg.hook_head_index]
-        W_V = model.W_V[self.cfg.hook_layer][self.cfg.hook_head_index]
+        # Get query, key and value matrices (Def 0 head just cuz of error), otherwise try self.cfg.hook_head_index
+        W_Q = model.W_Q[self.cfg.hook_layer][0]
+        W_K = model.W_K[self.cfg.hook_layer][0]
+        W_V = model.W_V[self.cfg.hook_layer][0]
         # Get K and V values
         K = E @ W_K
         V = E @ W_V
