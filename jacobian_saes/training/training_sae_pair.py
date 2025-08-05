@@ -26,6 +26,7 @@ from jacobian_saes.toolkit.pretrained_sae_loaders import (
 from jacobian_saes.training.mlp_with_act_grads import MLPWithActGrads
 from jacobian_saes.training.sparsity_metrics import sparsity_metrics
 from jacobian_saes.training import head_utils
+from notebooks.basic_usage_demo import topk_indices
 
 SPARSITY_PATH = "sparsity.safetensors"
 SAE_WEIGHTS_PATH = "sae_weights.safetensors"
@@ -422,6 +423,8 @@ class TrainingSAEPair(SAEPair):
         dead_neuron_mask: Optional[torch.Tensor] = None,
         dead_neuron_mask2: Optional[torch.Tensor] = None,
     ) -> TrainStepOutput:
+        q,z,ctx = self.attn_with_activation_grads(sae_in)
+        sae_in = q
         sae_out, feature_acts, topk_indices, mse_loss, l1_loss = self.apply_sae(
             sae_in, False, current_l1_coefficient
         )
@@ -478,11 +481,11 @@ class TrainingSAEPair(SAEPair):
             # mlp_out, mlp_act_grads = self.mlp(sae_in)
             # Replace with second hook (in our case, hook_z). So change utils function to get the hook of any hook etc.
             # head_out = head_utils.get_head(self.cfg.model_name,"blocks.0.attn.hook_z")
-            head_out,jacobian = self.get_head_elements(sae_in)
+            # set sae_in to query using get head elements
             sae_out2, feature_acts2, topk_indices2, _mse_loss2, l1_loss2 = (
-                self.apply_sae(head_out, True, current_l1_coefficient)
+                self.apply_sae(z, True, current_l1_coefficient)
             )
-
+            jacobian = self.compute_head_jacobian(*ctx,topk_indices,topk_indices2)
             # Calculate the Jacobian
             # Change to new jacobian calculation (based on tokens because yeah)
             """wd1 = self.get_W_dec(False) @ self.mlp.W_in  # (d_sae, d_mlp)
@@ -545,8 +548,8 @@ class TrainingSAEPair(SAEPair):
             l1_loss2=l1_loss2.item(),
         )
 
-    def get_head_elements(
-            self, E:torch.Tensor):
+    def attn_with_act_grads(self,
+                                   E:torch.tensor):
         model_name = self.cfg.model_name
         model = HookedTransformer.from_pretrained(model_name)
         # Get query, key and value matrices (Def 0 head just cuz of error)
@@ -558,25 +561,29 @@ class TrainingSAEPair(SAEPair):
         V = E @ W_V
         q = E @ W_Q
         # Now do einsum for attention pattern
-        S = einops.einsum(q,K,"d_h,l d_h->l")
+        S = einops.einsum(q, K, "d_h,l d_h->l")
         # Softmax and jacobian of softmax
-        A = torch.softmax(S,dim=-1)
+        A = torch.softmax(S, dim=-1)
         jacA = torch.diag(A) - A.unsqueeze(1) * A
 
+        z = einops.einsum(A, V, "l,l d_h->d_h")
+
+        return q,z,(V,K,jacA)
+
+    def compute_head_jacobian(
+            self,V:torch.tensor,K:torch.tensor,jacA:torch.tensor,topk_indices:torch.tensor,topk_indices2:torch.tensor):
         W_dec = self.get_W_dec(False)
         W_enc = self.get_W_enc(True)
 
-        wd1 = W_dec @ V.T
-        w2e = K @ W_enc
+        wd1 = W_dec[topk_indices] @ V.T
+        w2e = K @ W_enc[:,topk_indices2]
 
         J = einops.einsum(
             wd1, jacA, w2e,
             "d_s1 seq,seq seq2,seq2 d_s2-> d_s1 d_s2"
         )
 
-        z = einops.einsum(A, V, "l,l d_h->d_h")
-
-        return z,J
+        return J
 
 
     def apply_sae(
