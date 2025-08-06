@@ -16,6 +16,7 @@ from torch import nn
 from transformer_lens.components.transformer_block import TransformerBlock
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens import HookedTransformer
+from transformers.models.whisper.modeling_flax_whisper import WHISPER_DECODE_INPUTS_DOCSTRING
 
 from jacobian_saes.config import LanguageModelSAERunnerConfig
 from jacobian_saes.sae_pair import SAEPair, SAEPairConfig
@@ -369,7 +370,7 @@ class TrainingSAEPair(SAEPair):
                 hidden_pre_noised, return_indices=True
             )
             feature_acts = self.hook_sae_acts_post(feature_acts)
-
+            print(f"Got feature acts of shape {feature_acts.shape} and hidden pre noised of shape {hidden_pre_noised} from output = {is_output_sae}")
             return feature_acts, hidden_pre_noised, topk_indices
 
         feature_acts = self.hook_sae_acts_post(self.activation_fn(hidden_pre_noised))
@@ -569,7 +570,6 @@ class TrainingSAEPair(SAEPair):
         # Softmax and jacobian of softmax
         A = torch.softmax(S, dim=-1)
         jacA = torch.diag(A) - A.unsqueeze(1) * A
-
         z = einops.einsum(A, V, "l,l d_h->d_h")
         print(f"z shape: {z.shape}")
         return q,z,(V,K,jacA)
@@ -577,12 +577,11 @@ class TrainingSAEPair(SAEPair):
     def compute_head_jacobian(
             self,V:torch.tensor,K:torch.tensor,jacA:torch.tensor,topk_indices:torch.tensor,topk_indices2:torch.tensor):
         print(f"Initial topk_indices shape: {topk_indices.shape}")
-        topk_indices = topk_indices[0]
-
         W_dec = self.get_W_dec(False)
         W_enc = self.get_W_enc(True)
         wd1 = W_dec[topk_indices] @ V.T
         w2e = K @ W_enc[:,topk_indices2]
+        print(f"W_dec shape: {W_dec.shape}, W_enc shape: {W_enc.shape}")
 
         J = einops.einsum(
             wd1, jacA, w2e,
