@@ -560,13 +560,19 @@ class TrainingSAEPair(SAEPair):
         K = E @ W_K
         V = E @ W_V
         q = E @ W_Q
-        q = q[-1]
+        # Actually get all queries
         # Now do einsum for attention pattern
-        S = einops.einsum(q, K, "d_h,l d_h->l")
+        S = einops.einsum(q, K, "l1 d_h,l2 d_h->l1 l2")
+        # Go l1 d_h, l2 d_h -> l1 l2
         # Softmax and jacobian of softmax
+        # Apply causal mask
+        mask = torch.triu(torch.ones(S.shape, dtype=torch.bool), diagonal=1).to(self.cfg.device)
+        S.masked_fill_(mask, -1e9)
         A = torch.softmax(S, dim=-1)
-        jacA = torch.diag(A) - A.unsqueeze(1) * A
-        z = einops.einsum(A, V, "l,l d_h->d_h")
+        jacA = torch.diag_embed(A) - einops.einsum(A,A,"l1 l2, l1 l3-> l1 l2 l3")
+        jacA = jacA.sum(0)
+        z = einops.einsum(A, V, "l1 l2,l2 d_h->l1 d_h")
+        # l1 l2, l2 d_h -> l1 d_h
         return q,z,(V,K,jacA)
 
     def compute_head_jacobian(
