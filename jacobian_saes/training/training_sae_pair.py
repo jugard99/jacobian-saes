@@ -484,6 +484,7 @@ class TrainingSAEPair(SAEPair):
             sae_out2, feature_acts2, topk_indices2, _mse_loss2, l1_loss2 = (
                 self.apply_sae(z, True, current_l1_coefficient)
             )
+            print(f"Feature acts 2 shape: {feature_acts2.shape}")
             jacobian = self.compute_head_jacobian(*ctx,topk_indices,topk_indices2)
             # Calculate the Jacobian
             # Change to new jacobian calculation (based on tokens because yeah)
