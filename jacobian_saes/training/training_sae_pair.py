@@ -571,10 +571,11 @@ class TrainingSAEPair(SAEPair):
 
     def compute_head_jacobian(
             self,V:torch.tensor,K:torch.tensor,jacA:torch.tensor,topk_indices:torch.tensor,topk_indices2:torch.tensor):
+        topk_indices = topk_indices[0]
         W_dec = self.get_W_dec(False)
         W_enc = self.get_W_enc(True)
         print(f"W_dec shape: {W_dec.shape}, V.T shape: {V.T.shape}")
-        wd1 = W_dec[topk_indices,:] @ V.T
+        wd1 = W_dec[topk_indices] @ V.T
         w2e = K @ W_enc[:,topk_indices2]
         print(topk_indices)
         print(topk_indices2)
