@@ -517,7 +517,7 @@ class TrainingSAEPair(SAEPair):
             aux_reconstruction_loss = torch.tensor(0.0)
         else:
             jacobian_loss = torch.tensor(0.0)
-            head_out = torch.tensor(0.0)
+            z = torch.tensor(0.0)
             sae_out2 = torch.tensor(0.0)
             feature_acts2 = torch.tensor(0.0)
             mse_loss2 = torch.tensor(0.0)
@@ -530,7 +530,7 @@ class TrainingSAEPair(SAEPair):
             sae_out=sae_out,
             feature_acts=feature_acts,
             # Replace with second hook
-            sae_in2=head_out,
+            sae_in2=z,
             sae_out2=sae_out2,
             feature_acts2=feature_acts2,
             loss=loss,
@@ -574,12 +574,8 @@ class TrainingSAEPair(SAEPair):
         topk_indices = topk_indices[0]
         W_dec = self.get_W_dec(False)
         W_enc = self.get_W_enc(True)
-        print(f"W_dec shape: {W_dec.shape}, V.T shape: {V.T.shape}")
         wd1 = W_dec[topk_indices] @ V.T
         w2e = K @ W_enc[:,topk_indices2]
-        print(topk_indices)
-        print(topk_indices2)
-        print(wd1.shape,jacA.shape,w2e.shape)
 
         J = einops.einsum(
             wd1, jacA, w2e,
