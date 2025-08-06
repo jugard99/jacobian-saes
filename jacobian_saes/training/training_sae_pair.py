@@ -576,6 +576,8 @@ class TrainingSAEPair(SAEPair):
         print(f"W_dec shape: {W_dec.shape}, V.T shape: {V.T.shape}")
         wd1 = W_dec[topk_indices,:] @ V.T
         w2e = K @ W_enc[:,topk_indices2]
+        print(topk_indices)
+        print(topk_indices2)
         print(wd1.shape,jacA.shape,w2e.shape)
 
         J = einops.einsum(
