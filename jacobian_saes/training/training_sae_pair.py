@@ -370,7 +370,6 @@ class TrainingSAEPair(SAEPair):
                 hidden_pre_noised, return_indices=True
             )
             feature_acts = self.hook_sae_acts_post(feature_acts)
-            print(f"Got feature acts of shape {feature_acts.shape} and hidden pre noised of shape {hidden_pre_noised} from output = {is_output_sae}")
             return feature_acts, hidden_pre_noised, topk_indices
 
         feature_acts = self.hook_sae_acts_post(self.activation_fn(hidden_pre_noised))
@@ -486,8 +485,6 @@ class TrainingSAEPair(SAEPair):
             sae_out2, feature_acts2, topk_indices2, _mse_loss2, l1_loss2 = (
                 self.apply_sae(sae_in2, True, current_l1_coefficient)
             )
-            print(f"Feature acts 2 shape: {feature_acts2.shape}")
-            print(f"Feature acts 1 shape: {feature_acts.shape}")
             jacobian = self.compute_head_jacobian(*ctx,topk_indices,topk_indices2)
             # Calculate the Jacobian
             # Change to new jacobian calculation (based on tokens because yeah)
@@ -564,24 +561,20 @@ class TrainingSAEPair(SAEPair):
         V = E @ W_V
         q = E @ W_Q
         q = q[-1]
-        print(f"q shape: {q.shape}")
         # Now do einsum for attention pattern
         S = einops.einsum(q, K, "d_h,l d_h->l")
         # Softmax and jacobian of softmax
         A = torch.softmax(S, dim=-1)
         jacA = torch.diag(A) - A.unsqueeze(1) * A
         z = einops.einsum(A, V, "l,l d_h->d_h")
-        print(f"z shape: {z.shape}")
         return q,z,(V,K,jacA)
 
     def compute_head_jacobian(
             self,V:torch.tensor,K:torch.tensor,jacA:torch.tensor,topk_indices:torch.tensor,topk_indices2:torch.tensor):
-        print(f"Initial topk_indices shape: {topk_indices.shape}")
         W_dec = self.get_W_dec(False)
         W_enc = self.get_W_enc(True)
         wd1 = W_dec[topk_indices] @ V.T
         w2e = K @ W_enc[:,topk_indices2]
-        print(f"W_dec shape: {W_dec.shape}, W_enc shape: {W_enc.shape}")
 
         J = einops.einsum(
             wd1, jacA, w2e,

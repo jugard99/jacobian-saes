@@ -272,15 +272,16 @@ class SAETrainer:
             )
 
             with torch.no_grad():
-                did_fire = (train_step_output.feature_acts > 0).float().sum(-2) > 0
+                did_fire = (train_step_output.feature_acts > 0).float().sum(-1) > 0
                 self.n_forward_passes_since_fired += 1
                 self.n_forward_passes_since_fired[did_fire] = 0
                 self.act_freq_scores += (
                     (train_step_output.feature_acts.abs() > 0).float().sum(0)
                 )
                 if self.cfg.use_jacobian_loss:
+                    print(f"Output feature acts shape at did fire: {train_step_output.feature_acts2.shape}")
                     did_fire2 = (train_step_output.feature_acts2 > 0).float().sum(
-                        -2
+                        -1
                     ) > 0
                     self.n_forward_passes_since_fired2 += 1
                     self.n_forward_passes_since_fired2[did_fire2] = 0
