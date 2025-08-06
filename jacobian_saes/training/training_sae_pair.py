@@ -481,8 +481,9 @@ class TrainingSAEPair(SAEPair):
             # Replace with second hook (in our case, hook_z). So change utils function to get the hook of any hook etc.
             # head_out = head_utils.get_head(self.cfg.model_name,"blocks.0.attn.hook_z")
             # set sae_in to query using get head elements
+            sae_in2 = z
             sae_out2, feature_acts2, topk_indices2, _mse_loss2, l1_loss2 = (
-                self.apply_sae(z, True, current_l1_coefficient)
+                self.apply_sae(sae_in2, True, current_l1_coefficient)
             )
             print(f"Feature acts 2 shape: {feature_acts2.shape}")
             print(f"Feature acts 1 shape: {feature_acts.shape}")
@@ -561,19 +562,23 @@ class TrainingSAEPair(SAEPair):
         K = E @ W_K
         V = E @ W_V
         q = E @ W_Q
+        q = q[-1]
+        print(f"q shape: {q.shape}")
         # Now do einsum for attention pattern
-        S = einops.einsum(q[-1], K, "d_h,l d_h->l")
+        S = einops.einsum(q, K, "d_h,l d_h->l")
         # Softmax and jacobian of softmax
         A = torch.softmax(S, dim=-1)
         jacA = torch.diag(A) - A.unsqueeze(1) * A
 
         z = einops.einsum(A, V, "l,l d_h->d_h")
-
+        print(f"z shape: {z.shape}")
         return q,z,(V,K,jacA)
 
     def compute_head_jacobian(
             self,V:torch.tensor,K:torch.tensor,jacA:torch.tensor,topk_indices:torch.tensor,topk_indices2:torch.tensor):
+        print(f"Initial topk_indices shape: {topk_indices.shape}")
         topk_indices = topk_indices[0]
+
         W_dec = self.get_W_dec(False)
         W_enc = self.get_W_enc(True)
         wd1 = W_dec[topk_indices] @ V.T
