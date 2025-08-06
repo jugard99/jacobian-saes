@@ -560,8 +560,7 @@ class TrainingSAEPair(SAEPair):
         V = E @ W_V
         q = E @ W_Q
         # Now do einsum for attention pattern
-        print(q.shape,K.shape)
-        S = einops.einsum(q, K, "d_h,l d_h->l")
+        S = einops.einsum(q[-1], K, "d_h,l d_h->l")
         # Softmax and jacobian of softmax
         A = torch.softmax(S, dim=-1)
         jacA = torch.diag(A) - A.unsqueeze(1) * A
