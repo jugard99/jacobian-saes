@@ -550,6 +550,7 @@ class TrainingSAEPair(SAEPair):
 
     def attn_with_act_grads(self,
                                    E:torch.tensor):
+        print(f"E shape: {E.shape}")
         model_name = self.cfg.model_name
         model = HookedTransformer.from_pretrained(model_name)
         # Get query, key and value matrices (Def 4 head just cuz of error) #self.cfg.hook_head_index]
