@@ -312,6 +312,7 @@ class TrainingSAEPair(SAEPair):
         Calcuate SAE features from inputs
         """
         if return_topk_indices:
+            print(f"sae in at encode_standard: {x.shape}")
             feature_acts, _, topk_indices = self.encode_with_hidden_pre_fn(
                 x, is_output_sae, return_topk_indices=True
             )
@@ -425,6 +426,7 @@ class TrainingSAEPair(SAEPair):
         print(f"E shape: {sae_in.shape}")
         q,z,ctx = self.attn_with_act_grads(sae_in)
         sae_in = q
+        print(f"sae_in shape after attn with act grads: {sae_in.shape}")
         sae_out, feature_acts, topk_indices, mse_loss, l1_loss = self.apply_sae(
             sae_in, False, current_l1_coefficient
         )
