@@ -581,6 +581,7 @@ class TrainingSAEPair(SAEPair):
             dim=0
         )
         z = einops.einsum(A, V, "l1 l2,l2 d_h->l1 d_h")
+        z = z.sum(0)
         # l1 l2, l2 d_h -> l1 d_h
         return q,z,(V,K,jacA)
 
@@ -589,9 +590,9 @@ class TrainingSAEPair(SAEPair):
         W_dec = self.get_W_dec(False)
         W_enc = self.get_W_enc(True)
         print(f"W_enc shape: {W_enc.shape}")
+        print(f"Topk indices 2 shape: {topk_indices2.shape}")
         wd1 = W_dec[topk_indices] @ V.T
         w2e = K @ W_enc[:,topk_indices2]
-
         J = einops.einsum(
             wd1, jacA, w2e,
             "d_s1 seq,seq seq2,seq2 d_s2-> d_s1 d_s2"
