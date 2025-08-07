@@ -7,6 +7,7 @@ import logging
 import os
 from dataclasses import dataclass, fields
 from typing import Any, Literal, Optional, overload
+import traceback
 
 import einops
 import torch
@@ -411,6 +412,8 @@ class TrainingSAEPair(SAEPair):
     def forward(
         self, x: Float[torch.Tensor, "... d_in"], is_output_sae: bool
     ) -> Float[torch.Tensor, "... d_in"]:
+        print(f"Forward dimensions: {x.shape}")
+        print(traceback.print_stack(limit=5))
         feature_acts, _ = self.encode_with_hidden_pre_fn(x, is_output_sae)
         sae_out = self.decode(feature_acts, is_output_sae)
 
