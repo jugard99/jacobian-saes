@@ -560,6 +560,7 @@ class TrainingSAEPair(SAEPair):
         K = E @ W_K
         V = E @ W_V
         q = E @ W_Q
+        print(f"E Shape: {E.shape}, K Shape: {K.shape}, W_K Shape: {W_K.shape}")
         # Actually get all queries
         # Now do einsum for attention pattern
         S = einops.einsum(q, K, "l1 d_h,l2 d_h->l1 l2")
@@ -569,8 +570,12 @@ class TrainingSAEPair(SAEPair):
         mask = torch.triu(torch.ones(S.shape, dtype=torch.bool), diagonal=1).to(self.cfg.device)
         S.masked_fill_(mask, -1e9)
         A = torch.softmax(S, dim=-1)
-        jacA = torch.diag_embed(A) - einops.einsum(A,A,"l1 l2, l1 l3-> l1 l2 l3")
-        jacA = jacA.sum(0)
+        """jacA = torch.diag_embed(A) - einops.einsum(A,A,"l1 l2, l1 l3-> l1 l2 l3")
+        jacA = jacA.sum(0)"""
+        jacA = torch.sum(
+            A.unsqueeze(2) * (torch.eye(A.shape[1], device=A.device) - A.unsqueeze(1)),
+            dim=0
+        )
         z = einops.einsum(A, V, "l1 l2,l2 d_h->l1 d_h")
         # l1 l2, l2 d_h -> l1 d_h
         return q,z,(V,K,jacA)
