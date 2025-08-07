@@ -355,7 +355,7 @@ class TrainingSAEPair(SAEPair):
     ):
         print(f"Sae in shape in encode w/ hidden pre: {x.shape}")
         sae_in = self.process_sae_in(x, is_output_sae)
-
+        print(f"Sae in shape in encode w/ hidden pre after processing: {sae_in.shape}")
         # "... d_in, d_in d_sae -> ... d_sae",
         hidden_pre = self.hook_sae_acts_pre(
             sae_in @ self.get_W_enc(is_output_sae) + self.get_b_enc(is_output_sae)
@@ -529,9 +529,9 @@ class TrainingSAEPair(SAEPair):
             l1_loss2 = torch.tensor(0.0)
             aux_reconstruction_loss = torch.tensor(0.0)
             loss = mse_loss + l1_loss + ghost_grad_loss
-
+        print(f"Sae in at train step output: {sae_in}")
         return TrainStepOutput(
-            sae_in=sae_in,
+            sae_in=q,
             sae_out=sae_out,
             feature_acts=feature_acts,
             # Replace with second hook
@@ -554,6 +554,7 @@ class TrainingSAEPair(SAEPair):
 
     def attn_with_act_grads(self,
                                    E:torch.tensor):
+        print(f"Attn with act grads has run with input E of shape: {E.shape}")
 
         model_name = self.cfg.model_name
         model = HookedTransformer.from_pretrained(model_name)
@@ -567,6 +568,7 @@ class TrainingSAEPair(SAEPair):
         V = E @ W_V
         q = E @ W_Q
         print(f"E Shape: {E.shape}, K Shape: {K.shape}, W_K Shape: {W_K.shape}")
+        print(f"q shape is, before sum: {q.shape}")
         # Actually get all queries
         # Now do einsum for attention pattern
         S = einops.einsum(q, K, "l1 d_h,l2 d_h->l1 l2")
@@ -587,6 +589,7 @@ class TrainingSAEPair(SAEPair):
         z = einops.einsum(A, V, "l1 l2,l2 d_h->l1 d_h")
         q = q.sum(0)
         z = z.sum(0)
+        print(f"q shape after sum: {q.shape}")
         # l1 l2, l2 d_h -> l1 d_h
         return q,z,(V,K,jacA)
 
