@@ -569,7 +569,9 @@ class TrainingSAEPair(SAEPair):
         # Apply causal mask
         mask = torch.triu(torch.ones(S.shape, dtype=torch.bool), diagonal=1).to(self.cfg.device)
         S.masked_fill_(mask, -1e9)
-        A = torch.softmax(S, dim=-1)
+        print(S.shape)
+        with torch.no_grad():
+            A = torch.softmax(S, dim=-1)
         """jacA = torch.diag_embed(A) - einops.einsum(A,A,"l1 l2, l1 l3-> l1 l2 l3")
         jacA = jacA.sum(0)"""
         jacA = torch.sum(
