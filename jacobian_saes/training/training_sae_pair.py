@@ -529,7 +529,7 @@ class TrainingSAEPair(SAEPair):
             l1_loss2 = torch.tensor(0.0)
             aux_reconstruction_loss = torch.tensor(0.0)
             loss = mse_loss + l1_loss + ghost_grad_loss
-        print(f"Sae in at train step output: {sae_in}")
+        print(f"Sae in at train step output: {sae_in.shape}")
         return TrainStepOutput(
             sae_in=q,
             sae_out=sae_out,
