@@ -558,6 +558,7 @@ class TrainingSAEPair(SAEPair):
         W_Q = model.W_Q[self.cfg.hook_layer][4]
         W_K = model.W_K[self.cfg.hook_layer][4]
         W_V = model.W_V[self.cfg.hook_layer][4]
+        print(f"W_Q shape: {W_Q.shape}")
         # Get K and V values
         K = E @ W_K
         V = E @ W_V
