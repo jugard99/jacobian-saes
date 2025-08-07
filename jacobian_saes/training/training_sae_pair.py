@@ -581,6 +581,7 @@ class TrainingSAEPair(SAEPair):
             dim=0
         )
         z = einops.einsum(A, V, "l1 l2,l2 d_h->l1 d_h")
+        q = q.sum(0)
         z = z.sum(0)
         # l1 l2, l2 d_h -> l1 d_h
         return q,z,(V,K,jacA)
