@@ -188,7 +188,7 @@ class SAETrainer:
             # Do a training step.
             layer_acts = self.activation_store.next_batch()[:, 0, :].to(self.sae.device)
             self.n_training_tokens += self.cfg.train_batch_size_tokens
-
+            print(f"SAETrainer Layer acts shape: {layer_acts.shape}")
             step_output = self._train_step(sae=self.sae, sae_in=layer_acts)
 
             if self.cfg.log_to_wandb:

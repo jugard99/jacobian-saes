@@ -563,9 +563,13 @@ class SAEPair(HookedRootModule):
         self, sae_in: Float[torch.Tensor, "... d_in"], is_output_sae: bool
     ) -> Float[torch.Tensor, "... d_sae"]:
         sae_in = sae_in.to(self.dtype)
+        print(f"Sae in to process_sae_in: f{sae_in.shape}")
         sae_in = self.reshape_fn_in(sae_in)
+        print(f"Sae in to process_sae_in post reshape: f{sae_in.shape}")
         sae_in = self.hook_sae_input(sae_in)
+        print(f"Sae in to process_sae_in post hook input: f{sae_in.shape}")
         sae_in = self.run_time_activation_norm_fn_in(sae_in)
+        print(f"Sae in to process_sae_in post activ norm fn: f{sae_in.shape}")
         sae_in = sae_in - (
             self.get_b_dec(is_output_sae) * self.cfg.apply_b_dec_to_input
         )

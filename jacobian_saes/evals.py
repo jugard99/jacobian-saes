@@ -19,6 +19,8 @@ from transformer_lens.hook_points import HookedRootModule
 from transformer_lens.utils import get_act_name
 
 import wandb
+
+from jacobian_saes import TrainingSAEPair
 from jacobian_saes.sae_pair import SAEPair
 from jacobian_saes.toolkit.pretrained_saes_directory import (
     get_pretrained_saes_directory,
@@ -752,12 +754,14 @@ def get_sparsity_and_variance_metrics(
             metric_dict["l1"].append(l1)
 
             if sae.cfg.use_jacobian_loss:
-                mlp_out, mlp_act_grads = sae.mlp(flattened_sae_out)
+               # mlp_out, mlp_act_grads = sae.mlp(flattened_sae_out)
+                q, z, ctx = TrainingSAEPair.attn_with_act_grads(flattened_sae_out)
                 _, _, topk_indices2 = sae.encode_with_hidden_pre_fn(
-                    mlp_out, True, return_topk_indices=True
+                    z, True, return_topk_indices=True
                 )
+                jacobian = TrainingSAEPair.compute_head_jacobian(*ctx,flattened_topk_indices,topk_indices2)
 
-                wd1 = sae.get_W_dec(False) @ sae.mlp.W_in  # (d_sae, d_mlp)
+                """wd1 = sae.get_W_dec(False) @ sae.mlp.W_in  # (d_sae, d_mlp)
                 w2e = sae.mlp.W_out @ sae.get_W_enc(True)  # (d_mlp, d_sae)
                 jacobian = einops.einsum(
                     wd1[flattened_topk_indices],
@@ -765,7 +769,7 @@ def get_sparsity_and_variance_metrics(
                     w2e[:, topk_indices2],
                     "... seq_pos k1 d_mlp, ... seq_pos d_mlp,"
                     "d_mlp ... seq_pos k2 -> ... seq_pos k2 k1",
-                )
+                )"""
 
                 metric_dict["jac_l1"].append(jacobian.abs().sum(dim=(-1, -2)))
                 metric_dict["jac_gini"].append(_gini(jacobian))
