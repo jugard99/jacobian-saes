@@ -10,6 +10,7 @@ from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Mapping, Union
 
+from jacobian_saes import utils
 import einops
 import pandas as pd
 import torch
@@ -20,7 +21,6 @@ from transformer_lens.utils import get_act_name
 
 import wandb
 
-from jacobian_saes import TrainingSAEPair
 from jacobian_saes.sae_pair import SAEPair
 from jacobian_saes.toolkit.pretrained_saes_directory import (
     get_pretrained_saes_directory,
@@ -755,11 +755,11 @@ def get_sparsity_and_variance_metrics(
 
             if sae.cfg.use_jacobian_loss:
                # mlp_out, mlp_act_grads = sae.mlp(flattened_sae_out)
-                q, z, ctx = TrainingSAEPair.attn_with_act_grads(flattened_sae_out)
+                q, z, ctx = utils.attn_with_act_grads(flattened_sae_out)
                 _, _, topk_indices2 = sae.encode_with_hidden_pre_fn(
                     z, True, return_topk_indices=True
                 )
-                jacobian = TrainingSAEPair.compute_head_jacobian(*ctx,flattened_topk_indices,topk_indices2)
+                jacobian = utils.compute_head_jacobian(*ctx,flattened_topk_indices,topk_indices2)
 
                 """wd1 = sae.get_W_dec(False) @ sae.mlp.W_in  # (d_sae, d_mlp)
                 w2e = sae.mlp.W_out @ sae.get_W_enc(True)  # (d_mlp, d_sae)
