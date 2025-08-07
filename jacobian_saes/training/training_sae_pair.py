@@ -422,6 +422,7 @@ class TrainingSAEPair(SAEPair):
         dead_neuron_mask: Optional[torch.Tensor] = None,
         dead_neuron_mask2: Optional[torch.Tensor] = None,
     ) -> TrainStepOutput:
+        print(f"E shape: {sae_in.shape}")
         q,z,ctx = self.attn_with_act_grads(sae_in)
         sae_in = q
         sae_out, feature_acts, topk_indices, mse_loss, l1_loss = self.apply_sae(
@@ -550,7 +551,7 @@ class TrainingSAEPair(SAEPair):
 
     def attn_with_act_grads(self,
                                    E:torch.tensor):
-        print(f"E shape: {E.shape}")
+
         model_name = self.cfg.model_name
         model = HookedTransformer.from_pretrained(model_name)
         # Get query, key and value matrices (Def 4 head just cuz of error) #self.cfg.hook_head_index]
