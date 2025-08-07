@@ -353,6 +353,7 @@ class TrainingSAEPair(SAEPair):
             Int[torch.Tensor, "... k"],
         ]
     ):
+        print(f"Sae in shape in encode w/ hidden pre: {x.shape}")
         sae_in = self.process_sae_in(x, is_output_sae)
 
         # "... d_in, d_in d_sae -> ... d_sae",
@@ -609,6 +610,7 @@ class TrainingSAEPair(SAEPair):
         self, sae_in: torch.Tensor, is_output_sae: bool, current_l1_coefficient: float
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         # Run through the SAE
+        print(f"Sae in shape at apply_sae: {sae_in.shape}")
         feature_acts, _, topk_indices = self.encode_with_hidden_pre_fn(
             sae_in, is_output_sae, return_topk_indices=True
         )
